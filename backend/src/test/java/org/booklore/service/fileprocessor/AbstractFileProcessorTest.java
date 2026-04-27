@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,8 +60,9 @@ class AbstractFileProcessorTest {
     void setUp() {
         processor = new TestableFileProcessor(
                 bookRepository, bookAdditionalFileRepository, bookCreatorService,
-                bookMapper, fileService, metadataMatchService, sidecarMetadataWriter, adjacentOpfMetadataApplier
+                bookMapper, fileService, metadataMatchService, sidecarMetadataWriter
         );
+        processor.setAdjacentOpfMetadataApplier(adjacentOpfMetadataApplier);
     }
 
     // ========== getBookFolderForCoverFallback ==========
@@ -184,8 +186,9 @@ class AbstractFileProcessorTest {
 
         processor.processFile(libraryFile);
 
-        verify(adjacentOpfMetadataApplier).applyAdjacentOpfMetadata(entity, libraryFile);
-        verify(bookCreatorService).saveConnections(entity);
+        var inOrder = inOrder(adjacentOpfMetadataApplier, bookCreatorService);
+        inOrder.verify(adjacentOpfMetadataApplier).applyAdjacentOpfMetadata(entity, libraryFile);
+        inOrder.verify(bookCreatorService).saveConnections(entity);
         assertThat(entity.getMetadataMatchScore()).isEqualTo(87.5f);
         assertThat(entity.getPrimaryBookFile().getCurrentHash()).isNotBlank();
     }
@@ -267,10 +270,9 @@ class AbstractFileProcessorTest {
                               BookMapper bookMapper,
                               FileService fileService,
                               MetadataMatchService metadataMatchService,
-                              SidecarMetadataWriter sidecarMetadataWriter,
-                              AdjacentOpfMetadataApplier adjacentOpfMetadataApplier) {
+                              SidecarMetadataWriter sidecarMetadataWriter) {
             super(bookRepository, bookAdditionalFileRepository, bookCreatorService,
-                    bookMapper, fileService, metadataMatchService, sidecarMetadataWriter, adjacentOpfMetadataApplier);
+                    bookMapper, fileService, metadataMatchService, sidecarMetadataWriter);
         }
 
         private BookEntity processResult;

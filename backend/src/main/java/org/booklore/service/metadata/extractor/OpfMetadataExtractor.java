@@ -2,7 +2,8 @@ package org.booklore.service.metadata.extractor;
 
 import lombok.extern.slf4j.Slf4j;
 import org.booklore.model.dto.BookMetadata;
-import org.springframework.stereotype.Service;
+import org.booklore.util.SecureXmlUtils;
+import org.springframework.stereotype.Component;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NamedNodeMap;
@@ -10,9 +11,7 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 
-import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.File;
 import java.io.StringReader;
 import java.nio.file.Files;
@@ -28,7 +27,7 @@ import java.util.Locale;
 import java.util.Set;
 
 @Slf4j
-@Service
+@Component
 public class OpfMetadataExtractor implements FileMetadataExtractor {
 
     private static final String DC_NS = "http://purl.org/dc/elements/1.1/";
@@ -76,37 +75,10 @@ public class OpfMetadataExtractor implements FileMetadataExtractor {
     }
 
     private Document parseDocument(File file) throws Exception {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(true);
-        factory.setXIncludeAware(false);
-        factory.setExpandEntityReferences(false);
-        setFeature(factory, XMLConstants.FEATURE_SECURE_PROCESSING, true);
-        setFeature(factory, "http://apache.org/xml/features/disallow-doctype-decl", true);
-        setFeature(factory, "http://xml.org/sax/features/external-general-entities", false);
-        setFeature(factory, "http://xml.org/sax/features/external-parameter-entities", false);
-        setAttribute(factory, XMLConstants.ACCESS_EXTERNAL_DTD, "");
-        setAttribute(factory, XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-
-        DocumentBuilder builder = factory.newDocumentBuilder();
+        DocumentBuilder builder = SecureXmlUtils.createSecureDocumentBuilder(true);
         builder.setEntityResolver((publicId, systemId) -> new InputSource(new StringReader("")));
-        try (var reader = Files.newBufferedReader(file.toPath())) {
-            return builder.parse(new InputSource(reader));
-        }
-    }
-
-    private void setFeature(DocumentBuilderFactory factory, String feature, boolean value) {
-        try {
-            factory.setFeature(feature, value);
-        } catch (Exception ignored) {
-            log.debug("XML parser feature '{}' is not supported", feature);
-        }
-    }
-
-    private void setAttribute(DocumentBuilderFactory factory, String name, String value) {
-        try {
-            factory.setAttribute(name, value);
-        } catch (Exception ignored) {
-            log.debug("XML parser attribute '{}' is not supported", name);
+        try (var stream = Files.newInputStream(file.toPath())) {
+            return builder.parse(stream);
         }
     }
 
@@ -270,7 +242,11 @@ public class OpfMetadataExtractor implements FileMetadataExtractor {
             return LocalDate.of(Integer.parseInt(trimmed), 1, 1);
         }
         if (trimmed.matches("^\\d{4}-\\d{2}$")) {
-            return LocalDate.parse(trimmed + "-01", DateTimeFormatter.ISO_LOCAL_DATE);
+            try {
+                return LocalDate.parse(trimmed + "-01", DateTimeFormatter.ISO_LOCAL_DATE);
+            } catch (DateTimeParseException ignored) {
+                // Fall through to the remaining parsers below.
+            }
         }
         if (trimmed.length() >= 10) {
             String datePrefix = trimmed.substring(0, 10);

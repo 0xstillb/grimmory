@@ -132,6 +132,40 @@ class AdjacentOpfMetadataApplierTest {
                 .containsExactly("Fantasy");
     }
 
+    @Test
+    void applyAdjacentOpfMetadata_doesNotUseSingleUnknownOpfWhenFolderContainsMultipleBooks() throws Exception {
+        Path folder = Files.createDirectories(tempDir.resolve("mixed"));
+        Files.writeString(folder.resolve("Book One.epub"), "epub");
+        Files.writeString(folder.resolve("Book Two.epub"), "epub");
+        Path unrelatedOpf = Files.writeString(folder.resolve("some-export.opf"), "opf");
+
+        LibraryFile libraryFile = buildLibraryFile(folder, "Book One.epub");
+        BookEntity bookEntity = createBookEntity();
+
+        applier.applyAdjacentOpfMetadata(bookEntity, libraryFile);
+
+        verify(opfMetadataExtractor, never()).extractMetadata(unrelatedOpf.toFile());
+        assertThat(bookEntity.getMetadata().getTitle()).isNull();
+    }
+
+    @Test
+    void applyAdjacentOpfMetadata_usesMetadataOpfInsideFolderBasedAudiobookDirectory() throws Exception {
+        Path folder = Files.createDirectories(tempDir.resolve("audiobooks").resolve("My Audiobook"));
+        Files.writeString(folder.resolve("track01.mp3"), "mp3");
+        Path metadataOpf = Files.writeString(folder.resolve("metadata.opf"), "opf");
+
+        LibraryFile libraryFile = buildFolderBasedLibraryFile(folder);
+        BookEntity bookEntity = createBookEntity();
+
+        when(opfMetadataExtractor.extractMetadata(metadataOpf.toFile()))
+                .thenReturn(BookMetadata.builder().title("Folder Based Title").build());
+
+        applier.applyAdjacentOpfMetadata(bookEntity, libraryFile);
+
+        verify(opfMetadataExtractor).extractMetadata(metadataOpf.toFile());
+        assertThat(bookEntity.getMetadata().getTitle()).isEqualTo("Folder Based Title");
+    }
+
     private LibraryFile buildLibraryFile(Path folder, String fileName) {
         LibraryEntity library = new LibraryEntity();
         library.setOrganizationMode(LibraryOrganizationMode.AUTO_DETECT);
@@ -144,6 +178,22 @@ class AdjacentOpfMetadataApplierTest {
                 .libraryPathEntity(libraryPath)
                 .fileSubPath("")
                 .fileName(fileName)
+                .build();
+    }
+
+    private LibraryFile buildFolderBasedLibraryFile(Path folder) {
+        LibraryEntity library = new LibraryEntity();
+        library.setOrganizationMode(LibraryOrganizationMode.AUTO_DETECT);
+
+        LibraryPathEntity libraryPath = new LibraryPathEntity();
+        libraryPath.setPath(folder.getParent().toString());
+
+        return LibraryFile.builder()
+                .libraryEntity(library)
+                .libraryPathEntity(libraryPath)
+                .fileSubPath("")
+                .fileName(folder.getFileName().toString())
+                .folderBased(true)
                 .build();
     }
 
