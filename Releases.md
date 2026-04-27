@@ -32,21 +32,22 @@
 
 ## Current Fork Release
 
-### `v3.0.0-opf-preview.1`
+### `v3.0.2-opf-preview.1`
 
-This prerelease is the current public preview line for the fork.
+This prerelease is the current public preview line for the fork, rebased onto upstream `v3.0.2`.
 
 **Release page**
-- [v3.0.0-opf-preview.1](https://github.com/0xstillb/grimmory/releases/tag/v3.0.0-opf-preview.1)
+- [v3.0.2-opf-preview.1](https://github.com/0xstillb/grimmory/releases/tag/v3.0.2-opf-preview.1)
 
 **Container images**
 - Moving tag: `ghcr.io/0xstillb/grimmory:opf-upstream`
-- Pinned tag: `ghcr.io/0xstillb/grimmory:opf-upstream-3d88146`
+- Pinned tag: `ghcr.io/0xstillb/grimmory:opf-upstream-ba2d16c`
 
 **Why use this build**
 - Adjacent `.opf` metadata can be applied during import without patching upstream yourself
 - The fork changes were trimmed down to keep future upstream sync work cleaner
 - Release and image paths now point to the renamed GitHub owner `0xstillb`
+- The branch now tracks the upstream `v3.0.2` release line
 
 ---
 
@@ -86,7 +87,7 @@ Use the pinned tag from the current release:
 ```yaml
 services:
   grimmory:
-    image: ghcr.io/0xstillb/grimmory:opf-upstream-3d88146
+    image: ghcr.io/0xstillb/grimmory:opf-upstream-ba2d16c
 ```
 
 ### Keep Existing Data
