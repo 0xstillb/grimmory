@@ -57,6 +57,9 @@ Requirements: [Docker](https://docs.docker.com/get-docker/) and [Docker Compose]
 > This fork publishes OPF-enabled preview builds to GitHub Container Registry at `ghcr.io/0xstillb/grimmory`.
 > The current moving tag is `opf-upstream`.
 
+> [!TIP]
+> For fork-specific release notes, pinned image tags, and upgrade guidance, see [Releases.md](Releases.md).
+
 ### Fork Preview Build
 
 Use this if you want adjacent `.opf` metadata import from this fork without building locally.
