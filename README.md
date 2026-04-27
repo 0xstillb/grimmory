@@ -10,12 +10,12 @@
 
 **Grimmory is a self-hosted digital library for people who take their reading seriously.**
 
-[![Release](https://img.shields.io/github/v/release/grimmory-tools/grimmory?color=818CF8&style=flat-square&logo=github)](https://github.com/grimmory-tools/grimmory/releases)
-[![License](https://img.shields.io/github/license/grimmory-tools/grimmory?color=fab005&style=flat-square)](LICENSE)
-[![Docker Pulls](https://img.shields.io/docker/pulls/grimmory/grimmory?color=2496ED&style=flat-square&logo=docker&logoColor=white)](https://hub.docker.com/r/grimmory/grimmory)
+[![Release](https://img.shields.io/github/v/release/captainboto/grimmory?color=818CF8&style=flat-square&logo=github)](https://github.com/captainboto/grimmory/releases)
+[![License](https://img.shields.io/github/license/captainboto/grimmory?color=fab005&style=flat-square)](LICENSE)
+[![Preview Image](https://img.shields.io/badge/Preview%20Image-GHCR-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/captainboto/grimmory/pkgs/container/grimmory)
 [![Discord](https://img.shields.io/badge/Discord-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/9YJ7HB4n8T)
 
-[Documentation](https://grimmory.org/docs) · [Quick Start](docs/QUICKSTART.md) · [Discord](https://discord.gg/9YJ7HB4n8T) · [Releases](https://github.com/grimmory-tools/grimmory/releases)
+[Documentation](https://grimmory.org/docs) · [Quick Start](docs/QUICKSTART.md) · [Discord](https://discord.gg/9YJ7HB4n8T) · [Fork Releases](https://github.com/captainboto/grimmory/releases)
 
 <!-- ![Grimmory Demo](assets/demo.gif) -->
 
@@ -53,6 +53,22 @@
 
 Requirements: [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/).
 
+> [!IMPORTANT]
+> This fork publishes OPF-enabled preview builds to GitHub Container Registry at `ghcr.io/captainboto/grimmory`.
+> The current moving tag is `opf-upstream`.
+
+### Fork Preview Build
+
+Use this if you want adjacent `.opf` metadata import from this fork without building locally.
+
+```yaml
+services:
+  grimmory:
+    image: ghcr.io/captainboto/grimmory:opf-upstream
+```
+
+If you prefer immutable installs, use the pinned tag from the latest fork release instead.
+
 <details>
 <summary><strong>Image Repositories</strong></summary>
 
@@ -60,6 +76,7 @@ Requirements: [Docker](https://docs.docker.com/get-docker/) and [Docker Compose]
 | --- | --- |
 | Docker Hub | `grimmory/grimmory` |
 | GitHub Container Registry | `ghcr.io/grimmory-tools/grimmory` |
+| This fork | `ghcr.io/captainboto/grimmory` |
 
 </details>
 
@@ -95,13 +112,18 @@ MYSQL_DATABASE=grimmory
 
 Stable images are published from semantic-release tags on `main` as `vX.Y.Z` plus `latest`. Nightly images are built from `develop` and tagged `nightly`.
 
+For this fork, OPF preview images are published from `codex/opf-support-upstream` and tagged as:
+
+- `ghcr.io/captainboto/grimmory:opf-upstream`
+- `ghcr.io/captainboto/grimmory:opf-upstream-<short-sha>`
+
 > [!NOTE]
-> Migrating from an existing Booklore container? You can keep your current service name, `container_name`, database name and user, ports, and mounted volumes the same. Replace only the `image:` line with `grimmory/grimmory:<tag>` or `ghcr.io/grimmory-tools/grimmory:<tag>`.
+> Migrating from an existing Booklore container? You can keep your current service name, `container_name`, database name and user, ports, and mounted volumes the same. Replace only the `image:` line with `grimmory/grimmory:<tag>`, `ghcr.io/grimmory-tools/grimmory:<tag>`, or `ghcr.io/captainboto/grimmory:opf-upstream`.
 
 ```yaml
 services:
   booklore:
-    image: grimmory/grimmory:v2.2.1
+    image: ghcr.io/captainboto/grimmory:opf-upstream
 ```
 
 Create a `docker-compose.yml` or copy and adapt [`deploy/compose/docker-compose.yml`](deploy/compose/docker-compose.yml):
@@ -109,10 +131,11 @@ Create a `docker-compose.yml` or copy and adapt [`deploy/compose/docker-compose.
 ```yaml
 services:
   grimmory:
-    image: grimmory/grimmory:latest
+    image: ghcr.io/captainboto/grimmory:opf-upstream
     # Convenience tag:
     # image: grimmory/grimmory:<release-version>
     # Alternative: ghcr.io/grimmory-tools/grimmory:<release-version>
+    # Fork preview: ghcr.io/captainboto/grimmory:opf-upstream
     # To build from source instead: comment out 'image' and uncomment below
     # build: .
     container_name: grimmory
