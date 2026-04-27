@@ -18,6 +18,10 @@ on:
         default: false
         type: boolean
 
+env:
+  ghcr_image: ghcr.io/${{ github.repository_owner }}/grimmory
+  ghcr_cache_ref: ghcr.io/${{ github.repository_owner }}/grimmory:buildcache
+
 jobs:
   build-and-push:
     name: Build and Push Preview Image
@@ -54,6 +58,7 @@ jobs:
 
           echo "preview_tag=$preview_tag" >> "$GITHUB_ENV"
           echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "image_ref=${{ env.ghcr_image }}:${preview_tag}" >> "$GITHUB_ENV"
           echo "Preview tag: $preview_tag"
 
       - name: Set Up Docker Buildx
@@ -75,13 +80,13 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/grimmory-tools/grimmory:${{ env.preview_tag }}
+            ${{ env.image_ref }}
           build-args: |
             APP_VERSION=${{ env.preview_tag }}
             APP_REVISION=${{ env.commit_sha }}
           cache-from: |
             type=gha,scope=image-shared
-            type=registry,ref=ghcr.io/grimmory-tools/grimmory:buildcache
+            type=registry,ref=${{ env.ghcr_cache_ref }}
 
       - name: Build and push Preview image with cache refresh
         if: ${{ inputs.refresh_shared_cache }}
@@ -93,10 +98,66 @@ jobs:
           push: true
           no-cache: true
           tags: |
-            ghcr.io/grimmory-tools/grimmory:${{ env.preview_tag }}
+            ${{ env.image_ref }}
           build-args: |
             APP_VERSION=${{ env.preview_tag }}
             APP_REVISION=${{ env.commit_sha }}
           cache-to: |
             type=gha,scope=image-shared,mode=max
-            type=registry,ref=ghcr.io/grimmory-tools/grimmory:buildcache,mode=max
+            type=registry,ref=${{ env.ghcr_cache_ref }},mode=max
+
+      - name: Write Usage Summary
+        run: |
+          {
+            echo "## Preview Image Ready"
+            echo
+            echo "- Ref: \`${{ inputs.ref }}\`"
+            echo "- Commit: \`${{ env.commit_sha }}\`"
+            echo "- Image: \`${{ env.image_ref }}\`"
+            echo
+            echo "### Docker Compose"
+            echo '```yaml'
+            echo "services:"
+            echo "  grimmory:"
+            echo "    image: ${{ env.image_ref }}"
+            echo "    container_name: grimmory"
+            echo "    environment:"
+            echo "      - USER_ID=1000"
+            echo "      - GROUP_ID=1000"
+            echo "      - TZ=Etc/UTC"
+            echo "      - DATABASE_URL=jdbc:mariadb://mariadb:3306/grimmory"
+            echo "      - DATABASE_USERNAME=grimmory"
+            echo "      - DATABASE_PASSWORD=your_secure_password"
+            echo "      - API_DOCS_ENABLED=false"
+            echo "      - DISK_TYPE=LOCAL"
+            echo "    depends_on:"
+            echo "      mariadb:"
+            echo "        condition: service_healthy"
+            echo '    ports: ["6060:6060"]'
+            echo "    volumes:"
+            echo "      - ./data:/app/data"
+            echo "      - ./books:/books"
+            echo "      - ./bookdrop:/bookdrop"
+            echo "    restart: unless-stopped"
+            echo
+            echo "  mariadb:"
+            echo "    image: lscr.io/linuxserver/mariadb:11.4.8"
+            echo "    container_name: mariadb"
+            echo "    environment:"
+            echo "      - PUID=1000"
+            echo "      - PGID=1000"
+            echo "      - TZ=Etc/UTC"
+            echo "      - MYSQL_ROOT_PASSWORD=super_secure_password"
+            echo "      - MYSQL_DATABASE=grimmory"
+            echo "      - MYSQL_USER=grimmory"
+            echo "      - MYSQL_PASSWORD=your_secure_password"
+            echo "    volumes:"
+            echo "      - ./config:/config"
+            echo "    restart: unless-stopped"
+            echo "    healthcheck:"
+            echo '      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost"]'
+            echo "      interval: 5s"
+            echo "      timeout: 5s"
+            echo "      retries: 10"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
