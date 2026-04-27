@@ -6,6 +6,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.booklore.model.dto.BookMetadata;
 import org.booklore.model.dto.settings.LibraryFile;
 import org.booklore.model.entity.BookEntity;
+import org.booklore.model.enums.BookFileType;
 import org.booklore.service.book.BookCreatorService;
 import org.booklore.service.metadata.extractor.OpfMetadataExtractor;
 import org.booklore.util.FileUtils;
@@ -63,8 +64,11 @@ public class AdjacentOpfMetadataApplier {
         }
 
         try (var entries = Files.list(folder)) {
-            List<Path> opfFiles = entries
+            List<Path> regularFiles = entries
                     .filter(Files::isRegularFile)
+                    .toList();
+
+            List<Path> opfFiles = regularFiles.stream()
                     .filter(path -> "opf".equalsIgnoreCase(FileUtils.getExtension(path.getFileName().toString())))
                     .sorted(Comparator.comparing(path -> path.getFileName().toString().toLowerCase(Locale.ROOT)))
                     .toList();
@@ -77,7 +81,7 @@ public class AdjacentOpfMetadataApplier {
                 }
             }
 
-            if (opfFiles.size() == 1) {
+            if (opfFiles.size() == 1 && (libraryFile.isFolderBased() || hasSingleSupportedBookFile(regularFiles))) {
                 return Optional.of(opfFiles.getFirst());
             }
         } catch (Exception e) {
@@ -85,6 +89,18 @@ public class AdjacentOpfMetadataApplier {
         }
 
         return Optional.empty();
+    }
+
+    private boolean hasSingleSupportedBookFile(List<Path> regularFiles) {
+        long supportedBookFiles = regularFiles.stream()
+                .map(Path::getFileName)
+                .map(Path::toString)
+                .map(FileUtils::getExtension)
+                .filter(extension -> !extension.isBlank())
+                .filter(extension -> BookFileType.fromExtension(extension).isPresent())
+                .count();
+
+        return supportedBookFiles == 1;
     }
 
     private void applyMetadata(BookEntity bookEntity, BookMetadata metadata) {

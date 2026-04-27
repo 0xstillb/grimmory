@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -85,6 +86,50 @@ class OpfMetadataExtractorTest {
         assertThat(metadata.getPublishedDate()).isEqualTo(LocalDate.of(2024, 5, 17));
         assertThat(metadata.getIsbn10()).isEqualTo("0123456789");
         assertThat(metadata.getIsbn13()).isEqualTo("9780001112223");
+    }
+
+    @Test
+    void extractMetadata_honorsDeclaredXmlEncoding() throws Exception {
+        Path path = tempDir.resolve("latin1.opf");
+        String contents = """
+                <?xml version="1.0" encoding="ISO-8859-1"?>
+                <package xmlns="http://www.idpf.org/2007/opf"
+                         xmlns:dc="http://purl.org/dc/elements/1.1/"
+                         version="2.0">
+                  <metadata>
+                    <dc:title>Caf\u00e9</dc:title>
+                    <dc:creator>Ren\u00e9</dc:creator>
+                  </metadata>
+                </package>
+                """;
+        Files.write(path, contents.getBytes(StandardCharsets.ISO_8859_1));
+
+        BookMetadata metadata = extractor.extractMetadata(path.toFile());
+
+        assertThat(metadata.getTitle()).isEqualTo("Café");
+        assertThat(metadata.getAuthors()).containsExactly("René");
+    }
+
+    @Test
+    void extractMetadata_invalidYearMonthDateDoesNotAbortExtraction() throws Exception {
+        Path opf = writeOpf("invalid-month.opf", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <package xmlns="http://www.idpf.org/2007/opf"
+                         xmlns:dc="http://purl.org/dc/elements/1.1/"
+                         version="2.0">
+                  <metadata>
+                    <dc:title>Example</dc:title>
+                    <dc:date>2024-13</dc:date>
+                    <dc:creator>Author</dc:creator>
+                  </metadata>
+                </package>
+                """);
+
+        BookMetadata metadata = extractor.extractMetadata(opf.toFile());
+
+        assertThat(metadata.getTitle()).isEqualTo("Example");
+        assertThat(metadata.getAuthors()).containsExactly("Author");
+        assertThat(metadata.getPublishedDate()).isNull();
     }
 
     @Test

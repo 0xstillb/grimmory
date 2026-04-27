@@ -12,7 +12,6 @@ import org.booklore.model.enums.BookFileType;
 import org.booklore.repository.BookAdditionalFileRepository;
 import org.booklore.repository.BookRepository;
 import org.booklore.service.book.BookCreatorService;
-import org.booklore.service.metadata.AdjacentOpfMetadataApplier;
 import org.booklore.service.metadata.MetadataMatchService;
 import org.booklore.service.metadata.extractor.CbxMetadataExtractor;
 import org.booklore.service.metadata.sidecar.SidecarMetadataWriter;
@@ -48,9 +47,8 @@ public class CbxProcessor extends AbstractFileProcessor implements BookFileProce
                         FileService fileService,
                         MetadataMatchService metadataMatchService,
                         SidecarMetadataWriter sidecarMetadataWriter,
-                        AdjacentOpfMetadataApplier adjacentOpfMetadataApplier,
                         CbxMetadataExtractor cbxMetadataExtractor) {
-        super(bookRepository, bookAdditionalFileRepository, bookCreatorService, bookMapper, fileService, metadataMatchService, sidecarMetadataWriter, adjacentOpfMetadataApplier);
+        super(bookRepository, bookAdditionalFileRepository, bookCreatorService, bookMapper, fileService, metadataMatchService, sidecarMetadataWriter);
         this.cbxMetadataExtractor = cbxMetadataExtractor;
     }
 

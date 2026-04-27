@@ -17,6 +17,7 @@ import org.booklore.service.metadata.sidecar.SidecarMetadataWriter;
 import org.booklore.util.FileService;
 import org.booklore.util.FileUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,7 +37,7 @@ public abstract class AbstractFileProcessor implements BookFileProcessor {
     protected final MetadataMatchService metadataMatchService;
     protected final FileService fileService;
     protected final SidecarMetadataWriter sidecarMetadataWriter;
-    protected final AdjacentOpfMetadataApplier adjacentOpfMetadataApplier;
+    protected AdjacentOpfMetadataApplier adjacentOpfMetadataApplier;
 
 
     protected AbstractFileProcessor(BookRepository bookRepository,
@@ -45,8 +46,7 @@ public abstract class AbstractFileProcessor implements BookFileProcessor {
                                     BookMapper bookMapper,
                                     FileService fileService,
                                     MetadataMatchService metadataMatchService,
-                                    SidecarMetadataWriter sidecarMetadataWriter,
-                                    AdjacentOpfMetadataApplier adjacentOpfMetadataApplier) {
+                                    SidecarMetadataWriter sidecarMetadataWriter) {
         this.bookRepository = bookRepository;
         this.bookAdditionalFileRepository = bookAdditionalFileRepository;
         this.bookCreatorService = bookCreatorService;
@@ -54,6 +54,10 @@ public abstract class AbstractFileProcessor implements BookFileProcessor {
         this.metadataMatchService = metadataMatchService;
         this.fileService = fileService;
         this.sidecarMetadataWriter = sidecarMetadataWriter;
+    }
+
+    @Autowired(required = false)
+    void setAdjacentOpfMetadataApplier(AdjacentOpfMetadataApplier adjacentOpfMetadataApplier) {
         this.adjacentOpfMetadataApplier = adjacentOpfMetadataApplier;
     }
 
@@ -70,11 +74,7 @@ public abstract class AbstractFileProcessor implements BookFileProcessor {
 
     private Book createAndMapBook(LibraryFile libraryFile, String hash) {
         BookEntity entity = processNewFile(libraryFile);
-        try {
-            adjacentOpfMetadataApplier.applyAdjacentOpfMetadata(entity, libraryFile);
-        } catch (Exception e) {
-            log.warn("Failed to apply adjacent OPF metadata for '{}': {}", libraryFile.getFileName(), e.getMessage());
-        }
+        applyAdjacentOpfMetadata(entity, libraryFile);
         entity.getPrimaryBookFile().setCurrentHash(hash);
         entity.setMetadataMatchScore(metadataMatchService.calculateMatchScore(entity));
         bookCreatorService.saveConnections(entity);
@@ -88,6 +88,17 @@ public abstract class AbstractFileProcessor implements BookFileProcessor {
         }
 
         return bookMapper.toBook(entity);
+    }
+
+    private void applyAdjacentOpfMetadata(BookEntity entity, LibraryFile libraryFile) {
+        if (adjacentOpfMetadataApplier == null) {
+            return;
+        }
+        try {
+            adjacentOpfMetadataApplier.applyAdjacentOpfMetadata(entity, libraryFile);
+        } catch (Exception e) {
+            log.warn("Failed to apply adjacent OPF metadata for '{}': {}", libraryFile.getFileName(), e.getMessage());
+        }
     }
 
     protected abstract BookEntity processNewFile(LibraryFile libraryFile);
