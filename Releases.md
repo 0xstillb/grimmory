@@ -41,7 +41,7 @@ This prerelease is the current public preview line for the fork, rebased onto up
 
 **Container images**
 - Moving tag: `ghcr.io/0xstillb/grimmory:opf-upstream`
-- Pinned tag: `ghcr.io/0xstillb/grimmory:opf-upstream-ba2d16c`
+- Pinned tag: `ghcr.io/0xstillb/grimmory:opf-upstream-<short-sha>`
 
 **Why use this build**
 - Adjacent `.opf` metadata can be applied during import without patching upstream yourself
@@ -87,7 +87,7 @@ Use the pinned tag from the current release:
 ```yaml
 services:
   grimmory:
-    image: ghcr.io/0xstillb/grimmory:opf-upstream-ba2d16c
+    image: ghcr.io/0xstillb/grimmory:opf-upstream-<short-sha>
 ```
 
 ### Keep Existing Data
