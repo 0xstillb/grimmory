@@ -14,6 +14,11 @@
 - unit tests for reading-session persistence and batch upload handling
 - persistence tests for KOReader-native progress storage boundaries
 
+Environment note:
+
+- on restricted Windows sandbox environments, some Gradle test runs may fail while writing test-result binaries or temporary OPF fixtures even when the GrimmLink code under test is unchanged
+- if that happens, rerun the targeted backend and OPF tests on a normal local workstation or CI runner with unrestricted temp/test-results filesystem access before treating it as an application regression
+
 ## API Compatibility Tests
 
 - request/response contract tests for planned `/api/koreader/**` endpoints
@@ -51,6 +56,7 @@ If emulator, ADB, or device access is unavailable:
 - confirm OPF import support still works on the fork base
 - confirm KOReader planning/implementation changes do not alter OPF metadata extraction behavior
 - keep explicit tests around adjacent OPF metadata where touched
+- if OPF tests fail with filesystem `AccessDeniedException` in a sandboxed environment, repeat them outside the sandbox before concluding that OPF support regressed
 
 ## EPUB Reading Progress Checks
 
