@@ -2,13 +2,17 @@ package org.booklore.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.booklore.config.security.userdetails.KoreaderUserDetails;
 import org.booklore.config.security.service.AuthenticationService;
 import org.booklore.exception.ApiError;
 import org.booklore.model.dto.BookLoreUser;
 import org.booklore.model.dto.CompletionRaceSessionDto;
 import org.booklore.model.dto.PageTurnerSessionDto;
+import org.booklore.model.dto.request.ReadingSessionBatchRequest;
+import org.booklore.model.dto.request.ReadingSessionItemRequest;
 import org.booklore.model.dto.request.ReadingSessionRequest;
 import org.booklore.model.dto.ProgressPercentDto;
+import org.booklore.model.dto.response.ReadingSessionBatchResponse;
 import org.booklore.model.dto.response.*;
 import org.booklore.model.entity.BookEntity;
 import org.booklore.model.entity.BookLoreUserEntity;
@@ -22,6 +26,8 @@ import org.booklore.repository.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,30 +98,37 @@ public class ReadingSessionService {
 
     @Transactional
     public void recordSession(ReadingSessionRequest request) {
-        BookLoreUser authenticatedUser = authenticationService.getAuthenticatedUser();
-        Long userId = authenticatedUser.getId();
+        BookLoreUserEntity userEntity = getAuthenticatedReaderEntity();
+        BookEntity book = resolveAccessibleBook(userEntity, request.getBookId(), request.getBookHash());
+        validateSessionWindow(request.getStartTime(), request.getEndTime(), request.getDurationSeconds());
+        ReadingSessionEntity session = buildOrReuseSession(userEntity, book, request);
 
-        BookLoreUserEntity userEntity = userRepository.findById(userId).orElseThrow(() -> new UsernameNotFoundException("User not found with ID: " + userId));
-        BookEntity book = bookRepository.findById(request.getBookId()).orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(request.getBookId()));
+        log.info("Reading session persisted successfully: sessionId={}, userId={}, bookId={}, duration={}s",
+                session.getId(), userEntity.getId(), request.getBookId(), request.getDurationSeconds());
+    }
 
-        ReadingSessionEntity session = ReadingSessionEntity.builder()
-                .user(userEntity)
-                .book(book)
-                .bookType(request.getBookType())
-                .startTime(request.getStartTime())
-                .endTime(request.getEndTime())
-                .durationSeconds(request.getDurationSeconds())
-                .durationFormatted(request.getDurationFormatted())
-                .startProgress(request.getStartProgress())
-                .endProgress(request.getEndProgress())
-                .progressDelta(request.getProgressDelta())
-                .startLocation(request.getStartLocation())
-                .endLocation(request.getEndLocation())
+    @Transactional
+    public ReadingSessionBatchResponse recordSessionsBatch(ReadingSessionBatchRequest request) {
+        BookLoreUserEntity userEntity = getAuthenticatedReaderEntity();
+        BookEntity book = resolveAccessibleBook(userEntity, request.getBookId(), request.getBookHash());
+
+        List<ReadingSessionBatchResponse.SessionResult> results = request.getSessions().stream()
+                .map(item -> {
+                    validateSessionWindow(item.getStartTime(), item.getEndTime(), item.getDurationSeconds());
+                    ReadingSessionEntity session = buildOrReuseSession(userEntity, book, request, item);
+                    return ReadingSessionBatchResponse.SessionResult.builder()
+                            .sessionId(session.getId())
+                            .startTime(session.getStartTime())
+                            .endTime(session.getEndTime())
+                            .build();
+                })
+                .toList();
+
+        return ReadingSessionBatchResponse.builder()
+                .totalRequested(request.getSessions().size())
+                .successCount(results.size())
+                .results(results)
                 .build();
-
-        readingSessionRepository.save(session);
-
-        log.info("Reading session persisted successfully: sessionId={}, userId={}, bookId={}, duration={}s", session.getId(), userId, request.getBookId(), request.getDurationSeconds());
     }
 
     public List<ReadingSessionHeatmapResponse> getSessionHeatmapForYear(int year) {
@@ -290,20 +303,17 @@ public class ReadingSessionService {
     }
 
     public Page<ReadingSessionResponse> getReadingSessionsForBook(Long bookId, int page, int size) {
-        BookLoreUser authenticatedUser = authenticationService.getAuthenticatedUser();
-        Long userId = authenticatedUser.getId();
-
-        if (!bookRepository.existsById(bookId)) {
-            throw ApiError.BOOK_NOT_FOUND.createException(bookId);
-        }
+        BookLoreUserEntity userEntity = getAuthenticatedReaderEntity();
+        resolveAccessibleBook(userEntity, bookId, null);
 
         Pageable pageable = PageRequest.of(page, size);
-        Page<ReadingSessionEntity> sessions = readingSessionRepository.findByUserIdAndBookId(userId, bookId, pageable);
+        Page<ReadingSessionEntity> sessions = readingSessionRepository.findByUserIdAndBookId(userEntity.getId(), bookId, pageable);
 
         return sessions.map(session -> ReadingSessionResponse.builder()
                 .id(session.getId())
                 .bookId(session.getBook().getId())
-                .bookTitle(session.getBook().getMetadata().getTitle())
+                .bookHash(session.getBookHash())
+                .bookTitle(resolveBookTitle(session.getBook()))
                 .bookType(session.getBookType())
                 .startTime(session.getStartTime())
                 .endTime(session.getEndTime())
@@ -311,10 +321,166 @@ public class ReadingSessionService {
                 .startProgress(session.getStartProgress())
                 .endProgress(session.getEndProgress())
                 .progressDelta(session.getProgressDelta())
+                .device(session.getDevice())
+                .deviceId(session.getDeviceId())
                 .startLocation(session.getStartLocation())
                 .endLocation(session.getEndLocation())
                 .createdAt(session.getCreatedAt())
                 .build());
+    }
+
+    private ReadingSessionEntity buildOrReuseSession(BookLoreUserEntity userEntity, BookEntity book, ReadingSessionRequest request) {
+        return readingSessionRepository.findFirstByUserIdAndBookIdAndStartTimeAndEndTimeAndDurationSecondsAndStartLocationAndEndLocationAndDeviceId(
+                        userEntity.getId(),
+                        book.getId(),
+                        request.getStartTime(),
+                        request.getEndTime(),
+                        request.getDurationSeconds(),
+                        request.getStartLocation(),
+                        request.getEndLocation(),
+                        request.getDeviceId()
+                )
+                .orElseGet(() -> readingSessionRepository.save(ReadingSessionEntity.builder()
+                        .user(userEntity)
+                        .book(book)
+                        .bookHash(resolveBookHash(book, request.getBookHash()))
+                        .bookType(resolveBookType(book, request.getBookType()))
+                        .startTime(request.getStartTime())
+                        .endTime(request.getEndTime())
+                        .durationSeconds(request.getDurationSeconds())
+                        .durationFormatted(request.getDurationFormatted())
+                        .startProgress(request.getStartProgress())
+                        .endProgress(request.getEndProgress())
+                        .progressDelta(request.getProgressDelta())
+                        .device(request.getDevice())
+                        .deviceId(request.getDeviceId())
+                        .startLocation(request.getStartLocation())
+                        .endLocation(request.getEndLocation())
+                        .build()));
+    }
+
+    private ReadingSessionEntity buildOrReuseSession(BookLoreUserEntity userEntity, BookEntity book, ReadingSessionBatchRequest batch, ReadingSessionItemRequest item) {
+        return readingSessionRepository.findFirstByUserIdAndBookIdAndStartTimeAndEndTimeAndDurationSecondsAndStartLocationAndEndLocationAndDeviceId(
+                        userEntity.getId(),
+                        book.getId(),
+                        item.getStartTime(),
+                        item.getEndTime(),
+                        item.getDurationSeconds(),
+                        item.getStartLocation(),
+                        item.getEndLocation(),
+                        batch.getDeviceId()
+                )
+                .orElseGet(() -> readingSessionRepository.save(ReadingSessionEntity.builder()
+                        .user(userEntity)
+                        .book(book)
+                        .bookHash(resolveBookHash(book, batch.getBookHash()))
+                        .bookType(resolveBookType(book, batch.getBookType()))
+                        .startTime(item.getStartTime())
+                        .endTime(item.getEndTime())
+                        .durationSeconds(item.getDurationSeconds())
+                        .durationFormatted(item.getDurationFormatted())
+                        .startProgress(item.getStartProgress())
+                        .endProgress(item.getEndProgress())
+                        .progressDelta(item.getProgressDelta())
+                        .device(batch.getDevice())
+                        .deviceId(batch.getDeviceId())
+                        .startLocation(item.getStartLocation())
+                        .endLocation(item.getEndLocation())
+                        .build()));
+    }
+
+    private BookLoreUserEntity getAuthenticatedReaderEntity() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getPrincipal() == null) {
+            throw ApiError.GENERIC_UNAUTHORIZED.createException("Authentication required");
+        }
+
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof BookLoreUser user) {
+            return userRepository.findByIdWithDetails(user.getId())
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found with ID: " + user.getId()));
+        }
+
+        if (principal instanceof KoreaderUserDetails details) {
+            if (!details.isSyncEnabled()) {
+                throw ApiError.GENERIC_UNAUTHORIZED.createException("Sync is disabled for this user");
+            }
+            if (details.getBookLoreUserId() == null) {
+                throw ApiError.GENERIC_UNAUTHORIZED.createException("KOReader user is not linked to a Grimmory user");
+            }
+            return userRepository.findByIdWithDetails(details.getBookLoreUserId())
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found with ID: " + details.getBookLoreUserId()));
+        }
+
+        throw ApiError.GENERIC_UNAUTHORIZED.createException("Unsupported authentication principal");
+    }
+
+    private BookEntity resolveAccessibleBook(BookLoreUserEntity userEntity, Long bookId, String bookHash) {
+        BookEntity book = bookRepository.findById(bookId)
+                .orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(bookId));
+
+        if (!canAccessBook(userEntity, book)) {
+            throw ApiError.FORBIDDEN.createException("Book is not accessible to the authenticated user");
+        }
+
+        if (bookHash != null && !bookHash.isBlank()) {
+            BookEntity hashMatchedBook = bookRepository.findByCurrentOrInitialHash(bookHash.trim())
+                    .orElseThrow(() -> ApiError.GENERIC_NOT_FOUND.createException("Book not found for hash " + bookHash));
+            if (!hashMatchedBook.getId().equals(book.getId())) {
+                throw ApiError.GENERIC_BAD_REQUEST.createException("bookId and bookHash do not point to the same book");
+            }
+        }
+
+        return book;
+    }
+
+    private boolean canAccessBook(BookLoreUserEntity userEntity, BookEntity book) {
+        if (userEntity.getPermissions() != null && userEntity.getPermissions().isPermissionAdmin()) {
+            return true;
+        }
+        return userEntity.getLibraries().stream()
+                .anyMatch(library -> library.getId().equals(book.getLibrary().getId()));
+    }
+
+    private String resolveBookHash(BookEntity book, String requestedBookHash) {
+        if (requestedBookHash != null && !requestedBookHash.isBlank()) {
+            return requestedBookHash.trim();
+        }
+        if (book.getPrimaryBookFile() == null) {
+            return null;
+        }
+        return book.getPrimaryBookFile().getCurrentHash() != null
+                ? book.getPrimaryBookFile().getCurrentHash()
+                : book.getPrimaryBookFile().getInitialHash();
+    }
+
+    private BookFileType resolveBookType(BookEntity book, BookFileType requestedBookType) {
+        if (requestedBookType != null) {
+            return requestedBookType;
+        }
+        if (book.getPrimaryBookFile() == null || book.getPrimaryBookFile().getBookType() == null) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("Book type is required when the primary file type is unavailable");
+        }
+        return book.getPrimaryBookFile().getBookType();
+    }
+
+    private String resolveBookTitle(BookEntity book) {
+        if (book.getMetadata() != null && book.getMetadata().getTitle() != null && !book.getMetadata().getTitle().isBlank()) {
+            return book.getMetadata().getTitle();
+        }
+        if (book.getPrimaryBookFile() != null) {
+            return book.getPrimaryBookFile().getFileName();
+        }
+        return "Unknown Book";
+    }
+
+    private void validateSessionWindow(Instant startTime, Instant endTime, Integer durationSeconds) {
+        if (durationSeconds == null || durationSeconds <= 0) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("durationSeconds must be greater than zero");
+        }
+        if (endTime.isBefore(startTime)) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("endTime must be greater than or equal to startTime");
+        }
     }
 
     public List<BookCompletionHeatmapResponse> getBookCompletionHeatmap() {

@@ -31,22 +31,27 @@ public class KoreaderAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
         String username = request.getHeader("x-auth-user");
         String key = request.getHeader("x-auth-key");
+        boolean koreaderApiRequest = request.getRequestURI() != null && request.getRequestURI().startsWith("/api/koreader/");
 
         if (username == null || key == null) {
-            log.info("Missing KOReader headers");
+            if (koreaderApiRequest) {
+                request.setAttribute("auth.failure.reason", "Missing KOReader authentication headers");
+            }
             chain.doFilter(request, response);
             return;
         }
 
         var user = koreaderUserRepository.findByUsername(username).orElse(null);
         if (user == null) {
-            log.info("KOReader user not found");
+            log.info("KOReader user not found for username '{}'", username);
+            request.setAttribute("auth.failure.reason", "Invalid KOReader credentials");
             chain.doFilter(request, response);
             return;
         }
 
-        if (!user.getPasswordMD5().equalsIgnoreCase(key)) {
-            log.info("KOReader user password not match");
+        if (user.getPasswordMD5() == null || !user.getPasswordMD5().equalsIgnoreCase(key)) {
+            log.info("KOReader credentials did not match for username '{}'", username);
+            request.setAttribute("auth.failure.reason", "Invalid KOReader credentials");
             chain.doFilter(request, response);
             return;
         }
@@ -67,6 +72,7 @@ public class KoreaderAuthFilter extends OncePerRequestFilter {
 
         UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
         SecurityContextHolder.getContext().setAuthentication(auth);
+        request.removeAttribute("auth.failure.reason");
 
         chain.doFilter(request, response);
     }

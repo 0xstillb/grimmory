@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ReadingSessionRepository extends JpaRepository<ReadingSessionEntity, Long> {
@@ -130,6 +131,17 @@ public interface ReadingSessionRepository extends JpaRepository<ReadingSessionEn
             @Param("userId") Long userId,
             @Param("bookId") Long bookId,
             Pageable pageable);
+
+    Optional<ReadingSessionEntity> findFirstByUserIdAndBookIdAndStartTimeAndEndTimeAndDurationSecondsAndStartLocationAndEndLocationAndDeviceId(
+            Long userId,
+            Long bookId,
+            Instant startTime,
+            Instant endTime,
+            Integer durationSeconds,
+            String startLocation,
+            String endLocation,
+            String deviceId
+    );
 
     @Query("""
             SELECT

@@ -1,42 +1,28 @@
 package org.booklore.model.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
-import org.booklore.model.enums.BookFileType;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.booklore.model.enums.BookFileType;
 
-import java.time.Instant;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ReadingSessionRequest {
-    @NotNull
+public class ReadingSessionBatchRequest {
+
+    @NotNull(message = "Book ID is required")
     private Long bookId;
 
     private String bookHash;
 
     private BookFileType bookType;
-
-    @NotNull
-    private Instant startTime;
-
-    @NotNull
-    private Instant endTime;
-
-    @NotNull
-    private Integer durationSeconds;
-
-    private String durationFormatted;
-
-    private Float startProgress;
-
-    private Float endProgress;
-
-    private Float progressDelta;
 
     @Size(max = 100, message = "Device must not exceed 100 characters")
     private String device;
@@ -45,9 +31,8 @@ public class ReadingSessionRequest {
     @Size(max = 255, message = "Device ID must not exceed 255 characters")
     private String deviceId;
 
-    @Size(max = 500, message = "Start location must not exceed 500 characters")
-    private String startLocation;
-
-    @Size(max = 500, message = "End location must not exceed 500 characters")
-    private String endLocation;
+    @NotEmpty(message = "Sessions list cannot be empty")
+    @Size(max = 500, message = "Sessions list cannot exceed 500 items")
+    @Valid
+    private List<ReadingSessionItemRequest> sessions;
 }

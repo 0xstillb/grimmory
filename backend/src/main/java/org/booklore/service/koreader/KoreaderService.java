@@ -1,247 +1,211 @@
 package org.booklore.service.koreader;
 
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.booklore.config.security.userdetails.KoreaderUserDetails;
 import org.booklore.exception.ApiError;
+import org.booklore.mapper.BookMapper;
+import org.booklore.model.dto.Book;
 import org.booklore.model.dto.progress.KoreaderProgress;
-import org.booklore.model.entity.*;
-import org.booklore.model.enums.ReadStatus;
+import org.booklore.model.entity.BookEntity;
+import org.booklore.model.entity.BookFileEntity;
+import org.booklore.model.entity.BookLoreUserEntity;
+import org.booklore.model.entity.koreader.KoreaderProgressEntity;
 import org.booklore.repository.*;
+import org.booklore.repository.koreader.KoreaderProgressRepository;
 import org.booklore.service.hardcover.HardcoverSyncService;
-import org.booklore.util.koreader.EpubCfiService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
-@AllArgsConstructor
+@RequiredArgsConstructor
 @Service
 public class KoreaderService {
 
-    private final UserBookProgressRepository progressRepository;
-    private final UserBookFileProgressRepository fileProgressRepository;
+    private final KoreaderProgressRepository koreaderProgressRepository;
     private final BookRepository bookRepository;
-    private final UserRepository userRepository;
-    private final KoreaderUserRepository koreaderUserRepository;
+    private final BookMapper bookMapper;
+    private final KoreaderSecurityContextService securityContextService;
     private final HardcoverSyncService hardcoverSyncService;
-    private final EpubCfiService epubCfiService;
 
-    public ResponseEntity<Map<String, String>> authorizeUser() {
-        KoreaderUserDetails authDetails = getAuthDetails();
-        KoreaderUserEntity koreaderUser = findKoreaderUser(authDetails.getUsername());
-        validatePassword(koreaderUser, authDetails);
+    public ResponseEntity<Map<String, Object>> authorizeUser() {
+        KoreaderSecurityContextService.AuthenticatedReader reader = securityContextService.requireCurrentReader(false);
+        log.info("User '{}' authorized for GrimmLink", reader.username());
+        return ResponseEntity.ok(Map.of(
+                "status", "ok",
+                "username", reader.username(),
+                "userId", reader.userId(),
+                "syncEnabled", reader.syncEnabled(),
+                "syncWithGrimmoryReader", false
+        ));
+    }
 
-        log.info("User '{}' authorized", authDetails.getUsername());
-        return ResponseEntity.ok(Map.of("username", authDetails.getUsername()));
+    public ResponseEntity<Book> getBookByHash(String bookHash) {
+        BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
+        BookEntity book = findAccessibleBookByHash(bookHash, reader);
+        Book mappedBook = bookMapper.toBook(book);
+        return ResponseEntity.ok(mappedBook);
     }
 
     public KoreaderProgress getProgress(String bookHash) {
-        KoreaderUserDetails authDetails = getAuthDetailsWithSyncCheck();
-        BookEntity book = findBookByHash(bookHash);
-        UserBookProgressEntity progress = findUserProgress(authDetails.getBookLoreUserId(), book.getId());
+        BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
+        BookEntity book = findAccessibleBookByHash(bookHash, reader);
 
-        log.info("getProgress: fetched progress='{}' percentage={} for userId={} bookHash={}",
-                progress.getKoreaderProgress(), progress.getKoreaderProgressPercent(),
-                authDetails.getBookLoreUserId(), bookHash);
-
-        Long timestamp = progress.getKoreaderLastSyncTime() != null
-                ? progress.getKoreaderLastSyncTime().getEpochSecond()
-                : null;
-
-        return KoreaderProgress.builder()
-                .timestamp(timestamp)
-                .document(bookHash)
-                .progress(progress.getKoreaderProgress())
-                .percentage(progress.getKoreaderProgressPercent())
-                .device("BookLore")
-                .device_id("BookLore")
-                .build();
+        return koreaderProgressRepository.findByUserIdAndBookId(reader.getId(), book.getId())
+                .map(entity -> KoreaderProgress.builder()
+                        .timestamp(entity.getTimestamp() != null ? entity.getTimestamp().getEpochSecond() : null)
+                        .document(entity.getDocument())
+                        .bookHash(entity.getBookHash())
+                        .bookId(book.getId())
+                        .fileFormat(entity.getFileFormat())
+                        .progress(entity.getProgress())
+                        .location(entity.getLocation())
+                        .percentage(entity.getPercentage())
+                        .currentPage(entity.getCurrentPage())
+                        .totalPages(entity.getTotalPages())
+                        .device(entity.getDevice())
+                        .device_id(entity.getDeviceId())
+                        .build())
+                .orElseGet(() -> KoreaderProgress.builder()
+                        .document(bookHash)
+                        .bookHash(bookHash)
+                        .bookId(book.getId())
+                        .fileFormat(resolveBookType(book))
+                        .build());
     }
 
     @Transactional
     public void saveProgress(String bookHash, KoreaderProgress koProgress) {
-        KoreaderUserDetails authDetails = getAuthDetailsWithSyncCheck();
-        BookEntity book = findBookByHash(bookHash);
-        BookLoreUserEntity user = findBookLoreUser(authDetails.getBookLoreUserId());
-
-        UserBookProgressEntity userProgress = getOrCreateUserProgress(user, book);
-        Float previousProgressPercent = userProgress.getKoreaderProgressPercent();
-        ReadStatus previousReadStatus = userProgress.getReadStatus();
-        updateProgressData(userProgress, koProgress, authDetails.isSyncWithBookloreReader(), book);
-
-        progressRepository.save(userProgress);
-
-        // Also save to file-level progress table (dual-write)
-        saveToFileProgress(user, book, userProgress);
-
-        log.info("saveProgress: saved progress='{}' percentage={} for userId={} bookHash={}", koProgress.getProgress(), koProgress.getPercentage(), authDetails.getBookLoreUserId(), bookHash);
-
-        // Sync progress to Hardcover asynchronously (if enabled for this user)
-        // But only if the progress percentage has changed from last time, or the read status has changed
-        if (koProgress.getPercentage() != null && (!koProgress.getPercentage().equals(previousProgressPercent)
-                || userProgress.getReadStatus() != previousReadStatus)) {
-            Float progressPercent = normalizeProgressPercent(koProgress.getPercentage());
-            hardcoverSyncService.syncProgressToHardcover(book.getId(), progressPercent, authDetails.getBookLoreUserId());
+        if (bookHash == null || bookHash.isBlank()) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("bookHash/document is required");
         }
+
+        BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
+        BookEntity book = findAccessibleBookByHash(bookHash, reader);
+
+        KoreaderProgressEntity entity = koreaderProgressRepository.findByUserIdAndBookId(reader.getId(), book.getId())
+                .orElseGet(KoreaderProgressEntity::new);
+
+        Float previousPercentage = entity.getPercentage();
+        Float normalizedPercentage = normalizePercentage(koProgress.getPercentage());
+        Instant clientTimestamp = normalizeTimestamp(koProgress.getTimestamp());
+        validatePageData(koProgress);
+
+        entity.setUser(reader);
+        entity.setBook(book);
+        entity.setBookHash(bookHash.trim());
+        entity.setDocument(resolveDocument(bookHash, koProgress));
+        entity.setFileFormat(resolveFileFormat(book, koProgress));
+        entity.setProgress(koProgress.getProgress());
+        entity.setLocation(resolveLocation(koProgress));
+        entity.setPercentage(normalizedPercentage);
+        entity.setCurrentPage(koProgress.getCurrentPage());
+        entity.setTotalPages(koProgress.getTotalPages());
+        entity.setDevice(koProgress.getDevice());
+        entity.setDeviceId(koProgress.getDevice_id());
+        entity.setTimestamp(clientTimestamp);
+
+        koreaderProgressRepository.save(entity);
+
+        if (!Objects.equals(previousPercentage, normalizedPercentage) && normalizedPercentage != null) {
+            hardcoverSyncService.syncProgressToHardcover(book.getId(), normalizedPercentage, reader.getId());
+        }
+
+        log.info("Saved GrimmLink progress for userId={} bookId={} hash={} percentage={}",
+                reader.getId(), book.getId(), bookHash, normalizedPercentage);
     }
 
-    private void saveToFileProgress(BookLoreUserEntity user, BookEntity book, UserBookProgressEntity progress) {
-        try {
-            BookFileEntity primaryFile = book.getPrimaryBookFile();
-            UserBookFileProgressEntity fileProgress = fileProgressRepository
-                    .findByUserIdAndBookFileId(user.getId(), primaryFile.getId())
-                    .orElseGet(UserBookFileProgressEntity::new);
+    private BookEntity findAccessibleBookByHash(String bookHash, BookLoreUserEntity reader) {
+        String normalizedHash = normalizeHash(bookHash);
+        BookEntity book = bookRepository.findByCurrentOrInitialHash(normalizedHash)
+                .orElseThrow(() -> ApiError.GENERIC_NOT_FOUND.createException("Book not found for hash " + normalizedHash));
 
-            fileProgress.setUser(user);
-            fileProgress.setBookFile(primaryFile);
-            fileProgress.setLastReadTime(progress.getLastReadTime());
-
-            // Map progress based on book type
-            switch (primaryFile.getBookType()) {
-                case EPUB, FB2, MOBI, AZW3 -> {
-                    fileProgress.setPositionData(progress.getEpubProgress());
-                    fileProgress.setPositionHref(progress.getEpubProgressHref());
-                    fileProgress.setProgressPercent(progress.getEpubProgressPercent());
-                }
-                case PDF -> {
-                    fileProgress.setPositionData(progress.getPdfProgress() != null ?
-                            String.valueOf(progress.getPdfProgress()) : null);
-                    fileProgress.setProgressPercent(progress.getPdfProgressPercent());
-                }
-                case CBX -> {
-                    fileProgress.setPositionData(progress.getCbxProgress() != null ?
-                            String.valueOf(progress.getCbxProgress()) : null);
-                    fileProgress.setProgressPercent(progress.getCbxProgressPercent());
-                }
-            }
-
-            fileProgressRepository.save(fileProgress);
-        } catch (Exception e) {
-            log.warn("Failed to save file-level progress for book {}: {}", book.getId(), e.getMessage());
+        if (!canAccessBook(reader, book)) {
+            throw ApiError.FORBIDDEN.createException("Book is not accessible to the authenticated user");
         }
+        return book;
     }
 
-    private void updateProgressData(UserBookProgressEntity userProgress, KoreaderProgress koProgress, boolean syncWithBookloreReader, BookEntity book) {
-        userProgress.setKoreaderProgress(koProgress.getProgress());
-        userProgress.setKoreaderProgressPercent(koProgress.getPercentage());
-        userProgress.setKoreaderDevice(koProgress.getDevice());
-        userProgress.setKoreaderDeviceId(koProgress.getDevice_id());
-        userProgress.setKoreaderLastSyncTime(Instant.now());
-        userProgress.setLastReadTime(Instant.now());
-        if (syncWithBookloreReader && koProgress.getProgress() != null) {
-            try {
-                String cfi = epubCfiService.convertXPointerToCfi(book.getFullFilePath(), koProgress.getProgress());
-
-                float percent = koProgress.getPercentage() * 100f;
-                float rounded = BigDecimal
-                        .valueOf(percent)
-                        .setScale(1, RoundingMode.HALF_UP)
-                        .floatValue();
-
-                userProgress.setEpubProgress(cfi);
-                userProgress.setEpubProgressPercent(rounded);
-
-                log.info("Converted xpointer to CFI for BookLore reader sync: {}", cfi);
-            } catch (Exception e) {
-                log.warn("Failed to convert xpointer to CFI: {}", e.getMessage());
-            }
+    private boolean canAccessBook(BookLoreUserEntity reader, BookEntity book) {
+        if (reader.getPermissions() != null && reader.getPermissions().isPermissionAdmin()) {
+            return true;
         }
-
-        updateReadStatus(userProgress, koProgress.getPercentage());
+        return reader.getLibraries().stream()
+                .anyMatch(library -> library.getId().equals(book.getLibrary().getId()));
     }
 
-    private void updateReadStatus(UserBookProgressEntity userProgress, Float progressFraction) {
-        if (progressFraction == null) {
-            return;
+    private String normalizeHash(String bookHash) {
+        if (bookHash == null || bookHash.isBlank()) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("Book hash is required");
         }
-        double progressPercent = progressFraction * 100.0;
-        if (progressPercent >= 99.5) {
-            userProgress.setReadStatus(ReadStatus.READ);
-            userProgress.setDateFinished(Instant.now());
-        } else if (progressPercent >= 0.25) {
-            userProgress.setReadStatus(ReadStatus.READING);
-        } else {
-            userProgress.setReadStatus(ReadStatus.UNREAD);
-        }
+        return bookHash.trim();
     }
 
-    private Float normalizeProgressPercent(Float progress) {
-        if (progress == null) {
+    private Float normalizePercentage(Float percentage) {
+        if (percentage == null) {
             return null;
         }
-        if (progress <= 1.0f) {
-            return progress * 100.0f;
+        if (percentage < 0.0f) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("Progress percentage cannot be negative");
         }
-        return progress;
-    }
-
-    private KoreaderUserDetails getAuthDetails() {
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (!(principal instanceof KoreaderUserDetails details)) {
-            log.warn("Authentication failed: invalid principal type");
-            throw ApiError.GENERIC_UNAUTHORIZED.createException("User not authenticated");
+        if (percentage <= 1.0f) {
+            return Math.round((percentage * 100.0f) * 10.0f) / 10.0f;
         }
-        return details;
+        if (percentage > 100.0f) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("Progress percentage cannot exceed 100");
+        }
+        return Math.round(percentage * 10.0f) / 10.0f;
     }
 
-    private KoreaderUserDetails getAuthDetailsWithSyncCheck() {
-        KoreaderUserDetails authDetails = getAuthDetails();
-        ensureSyncEnabled(authDetails);
-        return authDetails;
+    private Instant normalizeTimestamp(Long timestamp) {
+        if (timestamp == null) {
+            return Instant.now();
+        }
+        return Instant.ofEpochSecond(timestamp);
     }
 
-    private KoreaderUserEntity findKoreaderUser(String username) {
-        return koreaderUserRepository.findByUsername(username)
-                .orElseThrow(() -> {
-                    log.warn("KOReader user '{}' not found", username);
-                    return ApiError.GENERIC_NOT_FOUND.createException("KOReader user not found");
-                });
-    }
-
-    private void validatePassword(KoreaderUserEntity koreaderUser, KoreaderUserDetails authDetails) {
-        if (koreaderUser.getPasswordMD5() == null ||
-                !koreaderUser.getPasswordMD5().equalsIgnoreCase(authDetails.getPassword())) {
-            log.warn("Password mismatch for user '{}'", authDetails.getUsername());
-            throw ApiError.GENERIC_UNAUTHORIZED.createException("Invalid credentials");
+    private void validatePageData(KoreaderProgress progress) {
+        if (progress.getCurrentPage() != null && progress.getCurrentPage() < 0) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("currentPage cannot be negative");
+        }
+        if (progress.getTotalPages() != null && progress.getTotalPages() < 0) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("totalPages cannot be negative");
+        }
+        if (progress.getCurrentPage() != null && progress.getTotalPages() != null
+                && progress.getCurrentPage() > progress.getTotalPages()) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("currentPage cannot exceed totalPages");
         }
     }
 
-    private BookEntity findBookByHash(String bookHash) {
-        return bookRepository.findByCurrentHash(bookHash)
-                .orElseThrow(() -> ApiError.GENERIC_NOT_FOUND.createException("Book not found for hash " + bookHash));
-    }
-
-    private BookLoreUserEntity findBookLoreUser(long userId) {
-        return userRepository.findById(userId)
-                .orElseThrow(() -> ApiError.GENERIC_NOT_FOUND.createException("User not found with id " + userId));
-    }
-
-    private UserBookProgressEntity findUserProgress(long userId, Long bookId) {
-        return progressRepository.findByUserIdAndBookId(userId, bookId)
-                .orElseThrow(() -> ApiError.GENERIC_NOT_FOUND.createException("No progress found for user and book"));
-    }
-
-    private UserBookProgressEntity getOrCreateUserProgress(BookLoreUserEntity user, BookEntity book) {
-        return progressRepository.findByUserIdAndBookId(user.getId(), book.getId())
-                .orElseGet(() -> {
-                    UserBookProgressEntity newProgress = new UserBookProgressEntity();
-                    newProgress.setUser(user);
-                    newProgress.setBook(book);
-                    return newProgress;
-                });
-    }
-
-    private void ensureSyncEnabled(KoreaderUserDetails details) {
-        if (!details.isSyncEnabled()) {
-            log.warn("Sync is disabled for user '{}'", details.getUsername());
-            throw ApiError.GENERIC_UNAUTHORIZED.createException("Sync is disabled for this user");
+    private String resolveDocument(String bookHash, KoreaderProgress progress) {
+        if (progress.getDocument() != null && !progress.getDocument().isBlank()) {
+            return progress.getDocument().trim();
         }
+        return bookHash.trim();
+    }
+
+    private String resolveLocation(KoreaderProgress progress) {
+        if (progress.getLocation() != null && !progress.getLocation().isBlank()) {
+            return progress.getLocation();
+        }
+        return progress.getProgress();
+    }
+
+    private String resolveFileFormat(BookEntity book, KoreaderProgress progress) {
+        if (progress.getFileFormat() != null && !progress.getFileFormat().isBlank()) {
+            return progress.getFileFormat().trim().toUpperCase();
+        }
+        return resolveBookType(book);
+    }
+
+    private String resolveBookType(BookEntity book) {
+        BookFileEntity primaryBookFile = book.getPrimaryBookFile();
+        return primaryBookFile != null && primaryBookFile.getBookType() != null
+                ? primaryBookFile.getBookType().name()
+                : null;
     }
 }

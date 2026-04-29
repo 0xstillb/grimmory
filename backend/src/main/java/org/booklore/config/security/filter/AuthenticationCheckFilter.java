@@ -21,7 +21,8 @@ public class AuthenticationCheckFilter extends OncePerRequestFilter {
         var auth = SecurityContextHolder.getContext().getAuthentication();
 
         if (auth == null || !auth.isAuthenticated()) {
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            String message = (String) request.getAttribute("auth.failure.reason");
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, message != null ? message : "Authentication required");
             return;
         }
         chain.doFilter(request, response);

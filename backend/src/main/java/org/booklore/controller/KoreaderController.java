@@ -1,5 +1,6 @@
 package org.booklore.controller;
 
+import org.booklore.model.dto.Book;
 import org.booklore.model.dto.progress.KoreaderProgress;
 import org.booklore.service.koreader.KoreaderService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,7 +29,7 @@ public class KoreaderController {
     @Operation(summary = "Authorize KoReader user", description = "Authorize a user for KoReader sync.")
     @ApiResponse(responseCode = "200", description = "User authorized successfully")
     @GetMapping("/users/auth")
-    public ResponseEntity<Map<String, String>> authorizeUser() {
+    public ResponseEntity<Map<String, Object>> authorizeUser() {
         return koreaderService.authorizeUser();
     }
 
@@ -50,11 +51,18 @@ public class KoreaderController {
                 .body(progress);
     }
 
+    @Operation(summary = "Get book by hash", description = "Retrieve a book by its file hash for KOReader matching.")
+    @ApiResponse(responseCode = "200", description = "Book returned successfully")
+    @GetMapping("/books/by-hash/{bookHash}")
+    public ResponseEntity<Book> getBookByHash(@Parameter(description = "Book hash") @PathVariable String bookHash) {
+        return koreaderService.getBookByHash(bookHash);
+    }
+
     @Operation(summary = "Update KoReader progress", description = "Update reading progress for a book.")
     @ApiResponse(responseCode = "200", description = "Progress updated successfully")
     @PutMapping("/syncs/progress")
     public ResponseEntity<?> updateProgress(@Parameter(description = "KoReader progress object") @Valid @RequestBody KoreaderProgress koreaderProgress) {
-        koreaderService.saveProgress(koreaderProgress.getDocument(), koreaderProgress);
+        koreaderService.saveProgress(koreaderProgress.resolveBookHash(), koreaderProgress);
         return ResponseEntity.ok(Map.of("status", "progress updated"));
     }
 }

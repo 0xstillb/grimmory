@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 public class ReadingSessionResponse {
     private Long id;
     private Long bookId;
+    private String bookHash;
     private String bookTitle;
     private BookFileType bookType;
     private Instant startTime;
@@ -24,6 +25,8 @@ public class ReadingSessionResponse {
     private Float startProgress;
     private Float endProgress;
     private Float progressDelta;
+    private String device;
+    private String deviceId;
     private String startLocation;
     private String endLocation;
     private LocalDateTime createdAt;

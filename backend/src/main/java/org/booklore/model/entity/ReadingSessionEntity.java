@@ -53,6 +53,15 @@ public class ReadingSessionEntity {
     @Column(name = "progress_delta")
     private Float progressDelta;
 
+    @Column(name = "book_hash", length = 128)
+    private String bookHash;
+
+    @Column(name = "device", length = 100)
+    private String device;
+
+    @Column(name = "device_id", length = 255)
+    private String deviceId;
+
     @Column(name = "start_location", length = 500)
     private String startLocation;
 

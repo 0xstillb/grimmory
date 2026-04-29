@@ -57,6 +57,21 @@ public interface BookRepository extends JpaRepository<BookEntity, Long>, JpaSpec
     @Query("SELECT b FROM BookEntity b JOIN b.bookFiles bf WHERE bf.currentHash = :currentHash AND bf.isBookFormat = true AND (b.deleted IS NULL OR b.deleted = false)")
     Optional<BookEntity> findByCurrentHash(@Param("currentHash") String currentHash);
 
+    @EntityGraph(attributePaths = {"bookFiles", "metadata", "library", "libraryPath"})
+    @Query("""
+            SELECT DISTINCT b FROM BookEntity b
+            JOIN b.bookFiles bf
+            WHERE (bf.currentHash = :bookHash OR bf.initialHash = :bookHash)
+              AND bf.isBookFormat = true
+              AND (b.deleted IS NULL OR b.deleted = false)
+            ORDER BY b.id ASC
+            """)
+    List<BookEntity> findAllByCurrentOrInitialHash(@Param("bookHash") String bookHash);
+
+    default Optional<BookEntity> findByCurrentOrInitialHash(String bookHash) {
+        return findAllByCurrentOrInitialHash(bookHash).stream().findFirst();
+    }
+
     @Query("SELECT b FROM BookEntity b JOIN FETCH b.bookFiles bf WHERE bf.currentHash = :currentHash AND bf.isBookFormat = true AND (b.deleted IS NULL OR b.deleted = false OR b.deletedAt > :cutoff)")
     Optional<BookEntity> findByCurrentHashIncludingRecentlyDeleted(@Param("currentHash") String currentHash, @Param("cutoff") Instant cutoff);
 

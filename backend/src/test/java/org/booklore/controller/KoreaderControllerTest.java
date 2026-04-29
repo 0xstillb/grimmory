@@ -1,5 +1,6 @@
 package org.booklore.controller;
 
+import org.booklore.model.dto.Book;
 import org.booklore.model.dto.progress.KoreaderProgress;
 import org.booklore.service.koreader.KoreaderService;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,9 +33,9 @@ class KoreaderControllerTest {
 
     @Test
     void authorizeUser_returnsServiceResponse() {
-        Map<String, String> expected = Map.of("username", "test");
+        Map<String, Object> expected = Map.of("username", "test", "status", "ok");
         when(koreaderService.authorizeUser()).thenReturn(ResponseEntity.ok(expected));
-        ResponseEntity<Map<String, String>> resp = controller.authorizeUser();
+        ResponseEntity<Map<String, Object>> resp = controller.authorizeUser();
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertEquals(expected, resp.getBody());
     }
@@ -52,7 +53,7 @@ class KoreaderControllerTest {
         KoreaderProgress progress = KoreaderProgress.builder()
                 .document("doc")
                 .progress("progress")
-                .percentage(0.5F)
+                .percentage(50.0F)
                 .device("dev")
                 .device_id("id")
                 .build();
@@ -64,11 +65,22 @@ class KoreaderControllerTest {
     }
 
     @Test
+    void getBookByHash_returnsBook() {
+        Book book = Book.builder().id(1L).title("Example").build();
+        when(koreaderService.getBookByHash("hash")).thenReturn(ResponseEntity.ok(book));
+
+        ResponseEntity<Book> resp = controller.getBookByHash("hash");
+
+        assertEquals(HttpStatus.OK, resp.getStatusCode());
+        assertEquals(book, resp.getBody());
+    }
+
+    @Test
     void updateProgress_returnsOk() {
         KoreaderProgress progress = KoreaderProgress.builder()
                 .document("doc")
                 .progress("progress")
-                .percentage(0.5F)
+                .percentage(50.0F)
                 .device("dev")
                 .device_id("id")
                 .build();

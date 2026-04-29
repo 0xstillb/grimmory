@@ -130,4 +130,50 @@ class BookRepositoryDataJpaTest {
         assertThat(bookEntity.getId()).isEqualTo(book.getId());
         assertThat(bookEntity.getPrimaryBookFile()).isNotNull();
     }
+
+    @Test
+    void findByCurrentOrInitialHash_matchesInitialHashDeterministically() {
+        LibraryEntity library = LibraryEntity.builder()
+                .name("Test Library")
+                .icon("book")
+                .watch(false)
+                .formatPriority(List.of(BookFileType.EPUB, BookFileType.PDF))
+                .build();
+        entityManager.persist(library);
+        entityManager.flush();
+
+        LibraryPathEntity libraryPath = LibraryPathEntity.builder()
+                .library(library)
+                .path("/test/path")
+                .build();
+        entityManager.persist(libraryPath);
+        entityManager.flush();
+
+        BookEntity book = BookEntity.builder()
+                .library(library)
+                .libraryPath(libraryPath)
+                .addedOn(Instant.now())
+                .deleted(false)
+                .build();
+        entityManager.persist(book);
+        entityManager.flush();
+
+        entityManager.persist(BookFileEntity.builder()
+                .book(book)
+                .fileName("test.epub")
+                .fileSubPath("")
+                .isBookFormat(true)
+                .bookType(BookFileType.EPUB)
+                .initialHash("initial-hash")
+                .currentHash("current-hash")
+                .addedOn(Instant.now())
+                .build());
+        entityManager.flush();
+        entityManager.clear();
+
+        Optional<BookEntity> result = bookRepository.findByCurrentOrInitialHash("initial-hash");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getId()).isEqualTo(book.getId());
+    }
 }
