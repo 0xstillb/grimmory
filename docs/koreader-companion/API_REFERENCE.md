@@ -224,9 +224,92 @@ This document reflects the GrimmLink MVP plugin/backend contract currently imple
 - Plugin note:
   - the GrimmLink MVP plugin does not currently call this endpoint
 
+## GET `/api/koreader/shelves`
+
+- Purpose: list shelves available to the authenticated KOReader user (personal shelves and public shelves)
+- Auth requirement: required
+- Request payload: none
+- Expected response shape:
+
+```json
+[
+  {
+    "id": 1,
+    "name": "Reading",
+    "type": "PERSONAL",
+    "bookCount": 3
+  },
+  {
+    "id": 2,
+    "name": "Community Picks",
+    "type": "PUBLIC",
+    "bookCount": 12
+  }
+]
+```
+
+- Notes:
+  - `type` is `"PERSONAL"` for shelves owned by the user, `"PUBLIC"` for public shelves
+  - returns an empty array if the user has no shelves
+- Phase status: Prompt 5 — Shelf Sync
+
+## GET `/api/koreader/shelves/{shelfId}/books`
+
+- Purpose: list books in a specific shelf accessible to the authenticated KOReader user
+- Auth requirement: required
+- Request payload: none
+- Path params:
+  - `shelfId`: Grimmory shelf ID
+- Expected response shape:
+
+```json
+[
+  {
+    "bookId": 42,
+    "title": "Dune",
+    "author": "Frank Herbert",
+    "fileName": "Dune.epub",
+    "fileFormat": "EPUB",
+    "fileSizeKb": 512,
+    "bookHash": "abc123def456"
+  }
+]
+```
+
+- Field notes:
+  - `bookHash` is `currentHash` falling back to `initialHash` from the primary `BookFileEntity`; may be null if the file has not been hashed yet
+  - `author` joins all author names with `, `; may be null
+  - `fileSizeKb` may be null for un-analyzed files
+  - only books the user has library access to are returned; shelf may show fewer books than `bookCount` if access is partial
+- Error behavior:
+  - `404 Not Found` if shelf does not exist
+  - `403 Forbidden` if user does not own the shelf and it is not public
+- Phase status: Prompt 5 — Shelf Sync
+
+## GET `/api/koreader/books/{bookId}/download`
+
+- Purpose: download the primary book file for the authenticated KOReader user
+- Auth requirement: required
+- Request payload: none
+- Path params:
+  - `bookId`: Grimmory book ID
+- Response:
+  - `200 OK` with `Content-Type: application/octet-stream`
+  - `Content-Disposition: attachment; filename="<originalFilename>"`
+  - `Content-Length` header set to file size in bytes
+  - response body is the raw book file binary
+- Error behavior:
+  - `403 Forbidden` if user does not have library access to the book
+  - `404 Not Found` if the book does not exist
+  - `500` if the file is missing from disk or cannot be read
+- Security notes:
+  - path traversal is prevented by `FileUtils.requirePathWithinBase()` inside `BookDownloadService`
+  - user A cannot download user B's books
+- Phase status: Prompt 5 — Shelf Sync
+
 ## Plugin Endpoint Usage Summary
 
-The GrimmLink MVP plugin currently uses:
+The GrimmLink plugin currently uses:
 
 - `GET /api/koreader/users/auth`
 - `GET /api/koreader/books/by-hash/{bookHash}`
@@ -234,12 +317,14 @@ The GrimmLink MVP plugin currently uses:
 - `PUT /api/koreader/syncs/progress`
 - `POST /api/v1/reading-sessions`
 - `POST /api/v1/reading-sessions/batch`
+- `GET /api/koreader/shelves` (Shelf Sync)
+- `GET /api/koreader/shelves/{shelfId}/books` (Shelf Sync)
+- `GET /api/koreader/books/{bookId}/download` (Shelf Sync)
 
 The plugin does not currently implement:
 
 - rating sync
 - highlights / notes sync
 - bookmarks sync
-- shelf / library sync
 - Web Reader bridge
 - EPUB CFI conversion

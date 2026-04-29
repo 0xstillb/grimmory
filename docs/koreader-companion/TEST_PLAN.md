@@ -344,6 +344,96 @@ Expected:
 - if `USERNAME_B` can access the same book but has no synced progress, response should be an empty progress payload
 - if `USERNAME_B` cannot access the book, response should be `403`
 
+## Shelf Sync Tests
+
+### Backend Unit Tests
+
+- `listShelves_returnsShelfList` — 200 with user shelves + public shelves
+- `listShelves_serviceThrowsForbidden_propagates` — 403 on auth failure
+- `listShelfBooks_success` — 200 with book summaries including hash
+- `listShelfBooks_shelfNotFound_propagates` — 404 for unknown shelf
+- `listShelfBooks_forbidden_propagates` — 403 when shelf is private and not owner
+- `downloadBook_success` — 200 with octet-stream resource
+- `downloadBook_forbidden_propagates` — 403 when user lacks library access
+- `downloadBook_notFound_propagates` — 404 for unknown book
+
+### Manual Shelf API Checks
+
+Assumptions: same as above; replace `SHELF_ID` and `BOOK_ID` with real values.
+
+#### List shelves
+
+```bash
+curl -i \
+  -H "x-auth-user: USERNAME" \
+  -H "x-auth-key: MD5_KEY" \
+  "BASE_URL/api/koreader/shelves"
+```
+
+Expected:
+- `200 OK`
+- JSON array; each item has `id`, `name`, `type`, `bookCount`
+
+#### List books in shelf
+
+```bash
+curl -i \
+  -H "x-auth-user: USERNAME" \
+  -H "x-auth-key: MD5_KEY" \
+  "BASE_URL/api/koreader/shelves/SHELF_ID/books"
+```
+
+Expected:
+- `200 OK`
+- JSON array; each item has `bookId`, `title`, `fileName`, `fileFormat`, `fileSizeKb`, `bookHash`
+- `403` if shelf is private and user does not own it
+- `404` if shelf does not exist
+
+#### Download book file
+
+```bash
+curl -i -OJ \
+  -H "x-auth-user: USERNAME" \
+  -H "x-auth-key: MD5_KEY" \
+  "BASE_URL/api/koreader/books/BOOK_ID/download"
+```
+
+Expected:
+- `200 OK`
+- `Content-Disposition: attachment; filename="<originalFilename>"`
+- response body is the book file binary
+- `403` if user does not have library access to the book
+- `404` if book does not exist
+
+#### User isolation check for shelf
+
+1. Create a private shelf for `USERNAME_A`
+2. Attempt to list books with `USERNAME_B`
+
+Expected:
+- `403 Forbidden` for the private shelf access attempt
+
+#### User isolation check for download
+
+1. Find a book accessible to `USERNAME_A` but not `USERNAME_B` (different library assignments)
+2. Attempt download with `USERNAME_B`
+
+Expected:
+- `403 Forbidden`
+
+### Plugin Shelf Sync Manual Checks
+
+1. Configure GrimmLink with a valid Grimmory server
+2. Open Shelf Sync → Select Shelf — verify the shelf list appears
+3. Select a shelf — verify `shelf_id` and `shelf_name` are saved
+4. Sync Shelf Now — verify books appear in the download directory
+5. Run sync again — verify already-downloaded books are skipped
+6. Remove a book from the Grimmory shelf, re-sync — verify the local book is NOT deleted (default OFF)
+7. Enable `Delete Removed Books`, re-sync — verify only GrimmLink-tracked files are deleted
+8. Enable `Delete .sdr When Removing`, re-sync after removal — verify the `.sdr` sidecar is removed along with the book
+9. Simulate server offline — verify sync fails cleanly with an error message, reading is unaffected
+10. Verify progress sync still works after shelf sync (open book, push/pull progress)
+
 ## Plugin Conflict Walkthrough
 
 Use these runtime checks when KOReader execution is available:

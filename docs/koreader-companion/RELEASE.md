@@ -15,14 +15,19 @@
 - [ ] KOReader-native progress sync support documented
 - [ ] Reading-session and batch upload support documented
 - [ ] Moon+ Reader-like conflict prompt documented
+- [ ] Shelf Sync — list shelves, list shelf books, download books to local KOReader folder
+- [ ] Shelf Sync — safe local mapping with `shelf_sync_map` SQLite table
+- [ ] Shelf Sync — optional `Delete Removed Books` (default OFF)
+- [ ] Shelf Sync — optional `Delete .sdr When Removing` (default OFF)
 
 ## Excluded Features
 
 - [ ] Confirm non-MVP features not included
 - [ ] Confirm no Web Reader bridge
 - [ ] Confirm no EPUB CFI conversion
-- [ ] Confirm deferred features such as ratings/highlights/bookmarks/shelves
-- [ ] Confirm auto-update remains disabled for GrimmLink MVP
+- [ ] Confirm deferred features such as ratings/highlights/bookmarks
+- [ ] Confirm auto-update remains disabled for GrimmLink
+- [ ] Confirm magic shelves not included in Shelf Sync (regular shelves only for now)
 
 ## Migration Notes
 
@@ -53,6 +58,14 @@
 - [ ] Offline queue replay works
 - [ ] Conflict choices behave as expected
 - [ ] Remote jump fallback is safe when raw location cannot be applied
+- [ ] Shelf list endpoint returns correct shelves for authenticated user
+- [ ] Shelf books endpoint returns correct books with hash/format/size
+- [ ] Book download endpoint streams file correctly
+- [ ] Download access control prevents cross-user downloads
+- [ ] Shelf Sync plugin downloads missing books
+- [ ] Shelf Sync skips already-downloaded books
+- [ ] Delete Removed Books only removes GrimmLink-tracked files
+- [ ] Progress sync still works after shelf sync
 
 ## Known Limitations
 
