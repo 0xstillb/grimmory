@@ -120,7 +120,7 @@ class BookRepositoryDataJpaTest {
 
         entityManager.clear();
 
-        Optional<BookEntity> result = bookRepository.findByIdForKoboDownload(1L);
+        Optional<BookEntity> result = bookRepository.findByIdForKoboDownload(book.getId());
 
         TestTransaction.end();
 

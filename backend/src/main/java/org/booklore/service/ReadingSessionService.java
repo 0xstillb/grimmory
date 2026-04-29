@@ -18,6 +18,7 @@ import org.booklore.model.entity.BookEntity;
 import org.booklore.model.entity.BookLoreUserEntity;
 import org.booklore.model.entity.CategoryEntity;
 import org.booklore.model.entity.ReadingSessionEntity;
+import org.booklore.model.enums.BookFileType;
 import org.booklore.model.enums.ReadStatus;
 import org.booklore.repository.BookRepository;
 import org.booklore.repository.ReadingSessionRepository;
