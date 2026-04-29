@@ -69,3 +69,10 @@
 - [ ] Bookmarks sync
 - [ ] Shelf/library sync
 - [ ] Stabilization follow-up items
+
+## Phase 6 - Web Reader Bridge
+
+- [ ] Keep Web Reader bridge work in a later dedicated phase only
+- [ ] Treat EPUB CFI conversion as best-effort, not as an MVP dependency
+- [ ] Keep KOReader-native progress persisted separately from Web Reader progress
+- [ ] Do not mix KOReader-native progress semantics with Grimmory Web Reader semantics

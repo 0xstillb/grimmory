@@ -37,7 +37,7 @@ public class KoreaderController {
     @ApiResponse(responseCode = "403", description = "User registration forbidden")
     @PostMapping("/users/create")
     public ResponseEntity<?> createUser(@Parameter(description = "User data") @RequestBody Map<String, Object> userData) {
-        log.warn("Attempt to register user via Koreader blocked: {}", userData);
+        log.warn("Attempt to register user via Koreader blocked");
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "User registration via Koreader is disabled"));
     }
 

@@ -51,6 +51,18 @@ Do not reuse or overwrite Grimmory Web Reader progress fields such as:
 - `epubCfi`
 - web-reader last-position fields
 
+## Phase 6 - Web Reader Bridge
+
+Phase 6 is intentionally out of scope for the GrimmLink MVP.
+
+If a later bridge is added between KOReader-native progress and Grimmory Web Reader progress:
+
+- keep the bridge in a separate phase and code path
+- treat EPUB CFI conversion as best-effort only
+- do not block the MVP release on bridge work
+- do not overwrite KOReader-native source data with Web Reader fields
+- do not mix KOReader-native progress semantics with Grimmory Web Reader semantics
+
 ## Database Design Direction
 
 Future persistence should prefer dedicated KOReader storage tables or isolated companion entities over stretching existing web-reader progress records.

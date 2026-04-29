@@ -100,6 +100,34 @@ Expected:
 - `200 OK`
 - response includes `status`, `username`, `userId`, and `syncEnabled`
 
+### Auth Failure
+
+Missing headers:
+
+```bash
+curl -i \
+  "BASE_URL/api/koreader/users/auth"
+```
+
+Expected:
+
+- `401 Unauthorized`
+- response indicates authentication is required or KOReader headers are missing
+
+Invalid key:
+
+```bash
+curl -i \
+  -H "x-auth-user: USERNAME" \
+  -H "x-auth-key: WRONG_KEY" \
+  "BASE_URL/api/koreader/users/auth"
+```
+
+Expected:
+
+- `401 Unauthorized`
+- response indicates invalid KOReader credentials
+
 ### Book Lookup By Hash
 
 ```bash
@@ -226,3 +254,63 @@ Expected:
 - response includes `totalRequested`, `successCount`, and `results`
 - empty batch should return `400`
 - batches larger than 500 items should return `400`
+
+### Invalid Batch
+
+```bash
+curl -i -X POST \
+  -H "Content-Type: application/json" \
+  -H "x-auth-user: USERNAME" \
+  -H "x-auth-key: MD5_KEY" \
+  -d '{
+    "bookId": BOOK_ID,
+    "bookHash": "BOOK_HASH",
+    "bookType": "EPUB",
+    "device": "KOReader",
+    "deviceId": "android-tablet-01",
+    "sessions": []
+  }' \
+  "BASE_URL/api/v1/reading-sessions/batch"
+```
+
+Expected:
+
+- `400 Bad Request`
+- response includes validation details for the empty `sessions` list
+
+### User Isolation Check
+
+1. Push progress with `USERNAME_A` for `BOOK_HASH`.
+2. Attempt to pull the same hash with `USERNAME_B`.
+
+```bash
+curl -i -X PUT \
+  -H "Content-Type: application/json" \
+  -H "x-auth-user: USERNAME_A" \
+  -H "x-auth-key: MD5_KEY_A" \
+  -d '{
+    "document": "BOOK_HASH",
+    "bookHash": "BOOK_HASH",
+    "fileFormat": "EPUB",
+    "progress": "xp://point(/1/4/2:0)",
+    "location": "xp://point(/1/4/2:0)",
+    "percentage": 41.2,
+    "device": "KOReader",
+    "device_id": "android-tablet-01",
+    "timestamp": 1777425600
+  }' \
+  "BASE_URL/api/koreader/syncs/progress"
+```
+
+```bash
+curl -i \
+  -H "x-auth-user: USERNAME_B" \
+  -H "x-auth-key: MD5_KEY_B" \
+  "BASE_URL/api/koreader/syncs/progress/BOOK_HASH"
+```
+
+Expected:
+
+- `USERNAME_B` must not receive `USERNAME_A` progress data
+- if `USERNAME_B` can access the same book but has no synced progress, response should be an empty progress payload
+- if `USERNAME_B` cannot access the book, response should be `403`
