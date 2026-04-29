@@ -1,11 +1,46 @@
 # Repository Guidelines
 
+## Current KOReader Companion Context
+
+- Default/base branch for this fork is `opf-support-upstream`.
+- Active implementation branch for KOReader Companion work is `feature/OPF-KOreader-plugin`.
+- Do not work directly on `opf-support-upstream` for KOReader tasks unless a prompt explicitly asks for base-branch maintenance.
+- `opf-support-upstream` contains custom OPF support that must be preserved.
+- Do not remove, rewrite, or break OPF support while planning or implementing KOReader Companion features.
+
+## KOReader Companion Scope
+
+- The project goal is a Grimmory KOReader Companion integration.
+- Planned capability areas include KOReader authentication, book matching by hash, KOReader-native reading progress sync, reading session tracking, offline batch upload, Moon+ Reader-like sync behavior, ratings, highlights, notes, bookmarks, and shelf/library sync.
+- EPUB progress in this project means KOReader-native EPUB reading progress only.
+- Store KOReader EPUB progress separately from Grimmory Web Reader progress.
+- Keep raw KOReader location/progress payloads, percentage, page information when available, device identifiers, and timestamps.
+
+## Hard Non-Goals Unless Explicitly Requested
+
+- No Web Reader bridge.
+- No EPUB CFI conversion.
+- Do not write KOReader EPUB progress into Grimmory Web Reader fields such as `epubProgress`, `epubProgressPercent`, `epubCfi`, or web-reader last-position fields.
+- Do not blindly copy or overwrite application files from `plugin-changes` reference material.
+- Do not make backend, frontend, database, or config implementation changes during documentation-only tasks.
+- Do not change application code unless the active prompt explicitly asks for implementation.
+
+## Architecture Rules For Future Runs
+
+- Keep KOReader-specific logic isolated and upstream-friendly.
+- Prefer additive files and packages over invasive edits to Grimmory core code.
+- Favor future package boundaries such as `controller/koreader`, `service/koreader`, `dto/koreader`, `entity/koreader`, and `repository/koreader`.
+- Avoid large unrelated refactors.
+- Avoid frontend changes unless they are strictly necessary for an approved implementation task.
+- Keep KOReader-native progress storage and Grimmory Web Reader progress storage separate.
+- Preserve future upstream merge safety.
+
 ## Agent Workflow
 
 - Start from the root `Justfile` unless you have a clear reason to drop into a subproject.
 - Prefer `just api ...` and `just ui ...` over ad hoc commands.
 - Keep changes scoped to the relevant project instead of mixing backend, frontend, deployment, and release edits in one pass.
-- Target `develop`, not `main`.
+- For KOReader Companion work in this fork, target `feature/OPF-KOreader-plugin` unless the prompt explicitly says otherwise.
 - First prove the change with targeted tests around the edited surface, then run the wider suite for that surface before handing off.
 - If you cannot run the wider suite, say exactly what you ran, what you skipped, and why.
 
@@ -19,12 +54,16 @@
   - Application code: `src/app/{core,features,shared}`
   - Translations: `src/i18n/`
   - Assets: `src/assets/`
+- **KOReader planning docs (`docs/koreader-companion/`)**
+  - Handoff, architecture, API, scope, test, and release planning docs
+  - Reference-only source snapshots such as `docs/koreader-companion/reference/plugin-changes/`
 
 ## Ownership Boundaries
 
 - `deploy/`, `packaging/`, `tools/`, `docs/`, and `assets/` are support surfaces. Do not change them unless the task actually touches deployment, packaging, release automation, or shared docs/assets.
 - Keep backend, frontend, deployment, and release work separated unless the task genuinely crosses those boundaries.
 - When a change spans multiple surfaces, validate each one explicitly.
+- During documentation/bootstrap tasks, keep edits limited to docs and reference folders.
 
 ## Command Surface
 
@@ -48,6 +87,7 @@ just ui check       # run frontend verification
 - Add Flyway migrations as new files named `V<number>__<Description>.sql`.
 - Do not edit released migrations in place.
 - Prefer focused unit tests; use `@SpringBootTest` only when the Spring context is required.
+- For KOReader work, prefer isolated companion entities, repositories, DTOs, and services over broad edits to existing reader progress code.
 
 ## Frontend Rules
 
