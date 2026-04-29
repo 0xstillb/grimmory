@@ -9,11 +9,12 @@
 
 ## Included Features
 
-- [ ] Document finalized MVP features
-- [ ] Document companion auth behavior
-- [ ] Document book hash matching support
-- [ ] Document KOReader-native progress sync support
-- [ ] Document reading-session support
+- [ ] GrimmLink plugin package included at `plugins/grimmlink.koplugin`
+- [ ] Companion auth behavior documented (`x-auth-user` / `x-auth-key`)
+- [ ] Book hash matching support documented
+- [ ] KOReader-native progress sync support documented
+- [ ] Reading-session and batch upload support documented
+- [ ] Moon+ Reader-like conflict prompt documented
 
 ## Excluded Features
 
@@ -21,6 +22,7 @@
 - [ ] Confirm no Web Reader bridge
 - [ ] Confirm no EPUB CFI conversion
 - [ ] Confirm deferred features such as ratings/highlights/bookmarks/shelves
+- [ ] Confirm auto-update remains disabled for GrimmLink MVP
 
 ## Migration Notes
 
@@ -33,6 +35,7 @@
 - [ ] Confirm Grimmory backend compatibility version
 - [ ] Confirm KOReader/plugin compatibility expectations
 - [ ] Confirm OPF support remains intact
+- [ ] Confirm plugin remains isolated from Grimmory backend/frontend source
 
 ## Security Checklist
 
@@ -49,12 +52,14 @@
 - [ ] Reading sessions upload correctly
 - [ ] Offline queue replay works
 - [ ] Conflict choices behave as expected
+- [ ] Remote jump fallback is safe when raw location cannot be applied
 
 ## Known Limitations
 
-- [ ] Document current limitations
-- [ ] Document unsupported reader data types
-- [ ] Document platform/runtime caveats
+- [ ] Raw KOReader jump support depends on KOReader runtime APIs available on the device
+- [ ] Progress state is stored as latest local/remote snapshot, not a full per-device history log
+- [ ] Auto-update is intentionally disabled until a GrimmLink-specific release channel exists
+- [ ] Ratings, highlights, bookmarks, shelves, and Web Reader bridge remain later phases
 
 ## Rollback Notes
 

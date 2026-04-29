@@ -1,12 +1,12 @@
-# Planned MVP API Reference
+# GrimmLink MVP API Reference
 
-This document describes the planned KOReader Companion MVP API surface. The contracts below are planning references, not final implemented behavior.
+This document reflects the GrimmLink MVP plugin/backend contract currently implemented on the fork.
 
 ## Authentication Model
 
-- All `/api/koreader/**` endpoints require KOReader companion authentication.
-- Reading-session endpoints require authenticated companion access or an authenticated Grimmory user session, depending on the final security wiring.
-- Exact header names may be refined during implementation, but the companion path should use a dedicated auth boundary instead of reusing browser session assumptions.
+- All `/api/koreader/**` endpoints require `x-auth-user` and `x-auth-key`
+- `/api/v1/reading-sessions/**` accepts KOReader companion auth and remains compatible with existing authenticated Grimmory sessions
+- The plugin should treat `x-auth-key` as a precomputed auth value and send it verbatim
 
 ## GET `/api/koreader/users/auth`
 
@@ -25,6 +25,9 @@ This document describes the planned KOReader Companion MVP API surface. The cont
 }
 ```
 
+- GrimmLink usage:
+  - used by `Test Connection`
+  - used as the primary plugin auth check before sync operations
 - Phase status: MVP
 
 ## GET `/api/koreader/books/by-hash/{bookHash}`
@@ -35,28 +38,12 @@ This document describes the planned KOReader Companion MVP API surface. The cont
 - Path params:
   - `bookHash`: KOReader-visible file/content hash
 - Expected response shape:
-
-```json
-{
-  "found": true,
-  "book": {
-    "id": 456,
-    "title": "Example Book",
-    "hash": "abc123...",
-    "coverHash": "def456..."
-  }
-}
-```
-
-- MVP fallback when not found:
-
-```json
-{
-  "found": false,
-  "book": null
-}
-```
-
+  - the backend returns the Grimmory `Book` DTO directly
+  - GrimmLink currently relies on `id`, `title`, and other descriptive metadata when present
+- Not-found behavior:
+  - `404 Not Found`
+- Plugin note:
+  - GrimmLink caches successful hash matches locally
 - Phase status: MVP
 
 ## GET `/api/koreader/syncs/progress/{bookHash}`
@@ -70,20 +57,23 @@ This document describes the planned KOReader Companion MVP API surface. The cont
 
 ```json
 {
-  "found": true,
+  "timestamp": 1777425600,
+  "document": "BOOK_HASH",
+  "bookHash": "BOOK_HASH",
   "bookId": 456,
-  "progress": {
-    "percent": 41.2,
-    "rawLocation": "koreader-location-token",
-    "currentPage": 101,
-    "totalPages": 245,
-    "device": "KOReader",
-    "deviceId": "android-tablet-01",
-    "updatedAt": "2026-04-29T12:00:00Z"
-  }
+  "fileFormat": "EPUB",
+  "progress": "raw-koreader-progress",
+  "location": "raw-koreader-location",
+  "percentage": 41.2,
+  "currentPage": 101,
+  "totalPages": 245,
+  "device": "KOReader",
+  "device_id": "android-tablet-01"
 }
 ```
 
+- Empty-progress behavior:
+  - returns `200 OK` with a book-scoped empty progress body when the book is known but no KOReader progress has been stored yet
 - Phase status: MVP
 
 ## PUT `/api/koreader/syncs/progress`
@@ -94,14 +84,17 @@ This document describes the planned KOReader Companion MVP API surface. The cont
 
 ```json
 {
-  "bookHash": "abc123...",
-  "percent": 41.2,
-  "rawLocation": "koreader-location-token",
+  "document": "BOOK_HASH",
+  "bookHash": "BOOK_HASH",
+  "fileFormat": "EPUB",
+  "progress": "raw-koreader-progress",
+  "location": "raw-koreader-location",
+  "percentage": 41.2,
   "currentPage": 101,
   "totalPages": 245,
   "device": "KOReader",
   "deviceId": "android-tablet-01",
-  "clientTimestamp": "2026-04-29T12:00:00Z"
+  "timestamp": 1777425600
 }
 ```
 
@@ -109,14 +102,13 @@ This document describes the planned KOReader Companion MVP API surface. The cont
 
 ```json
 {
-  "status": "stored",
-  "bookId": 456,
-  "serverTimestamp": "2026-04-29T12:00:01Z",
-  "conflict": "none"
+  "status": "progress updated"
 }
 ```
 
 - Notes:
+  - backend normalizes `percentage` to `0..100`
+  - values in the `0..1` range are accepted and converted
   - KOReader-native progress only
   - no Web Reader bridge
   - no EPUB CFI conversion
@@ -147,13 +139,11 @@ This document describes the planned KOReader Companion MVP API surface. The cont
 
 - Expected response shape:
 
-```json
-{
-  "status": "accepted",
-  "sessionId": 789
-}
-```
-
+- Expected response shape:
+  - `202 Accepted`
+  - empty body
+- Plugin note:
+  - GrimmLink uses single-session upload for one-item flushes
 - Phase status: MVP
 
 ## POST `/api/v1/reading-sessions/batch`
@@ -229,3 +219,23 @@ This document describes the planned KOReader Companion MVP API surface. The cont
 ```
 
 - Phase status: MVP
+
+## Plugin Endpoint Usage Summary
+
+The GrimmLink MVP plugin currently uses:
+
+- `GET /api/koreader/users/auth`
+- `GET /api/koreader/books/by-hash/{bookHash}`
+- `GET /api/koreader/syncs/progress/{bookHash}`
+- `PUT /api/koreader/syncs/progress`
+- `POST /api/v1/reading-sessions`
+- `POST /api/v1/reading-sessions/batch`
+
+The plugin does not currently implement:
+
+- rating sync
+- highlights / notes sync
+- bookmarks sync
+- shelf / library sync
+- Web Reader bridge
+- EPUB CFI conversion

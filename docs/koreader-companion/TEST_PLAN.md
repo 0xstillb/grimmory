@@ -29,6 +29,7 @@
 - progress push/pull behavior tests
 - offline queue enqueue/dequeue/retry tests
 - conflict dialog decision tests
+- safe jump fallback tests when raw remote location cannot be applied
 
 ## Android KOReader Runtime Tests
 
@@ -61,9 +62,14 @@ If emulator, ADB, or device access is unavailable:
 
 - local ahead of remote
 - remote ahead of local
+- both local and remote changed since last sync
 - equal progress with differing timestamps
 - rapid progress changes below throttling thresholds
 - close/suspend event forcing sync
+- `Use Local`
+- `Use Remote`
+- `Ignore`
+- remote jump unavailable, page/percentage fallback
 
 ## Security Checks
 
@@ -77,6 +83,23 @@ If emulator, ADB, or device access is unavailable:
 - replay order after reconnect
 - duplicate suppression or idempotency checks
 - partial batch failure handling
+
+## Plugin Manual Runtime Checks
+
+Plugin path:
+
+- [plugins/grimmlink.koplugin](C:/Users/x_boa/Documents/New%20project/grimmory/plugins/grimmlink.koplugin)
+
+Recommended KOReader checks:
+
+1. Install `grimmlink.koplugin` into a KOReader plugins directory.
+2. Configure Grimmory server URL, KOReader username, and `x-auth-key` value.
+3. Open a matched EPUB.
+4. Verify GrimmLink can pull remote progress on open.
+5. Move local progress forward and close the book.
+6. Confirm progress and reading session upload or queue behavior.
+7. Reopen the same book and validate local/remote conflict handling.
+8. Repeat while offline, then use `Sync Pending Now` after reconnect.
 
 ## Manual API Checks
 
@@ -314,3 +337,30 @@ Expected:
 - `USERNAME_B` must not receive `USERNAME_A` progress data
 - if `USERNAME_B` can access the same book but has no synced progress, response should be an empty progress payload
 - if `USERNAME_B` cannot access the book, response should be `403`
+
+## Plugin Conflict Walkthrough
+
+Use these runtime checks when KOReader execution is available:
+
+### Remote Newer Than Local
+
+1. Read on device A and push progress.
+2. Open the same book on device B with an older local position.
+3. Expect GrimmLink to show a prompt before jumping.
+4. Choose `Use Remote` and verify the reader moves only if a safe jump path is available.
+
+### Local Newer Than Remote
+
+1. Keep device offline and move local progress forward.
+2. Reconnect and open or close the book.
+3. Expect GrimmLink to push local KOReader-native progress without prompting.
+
+### Conflict
+
+1. Advance the same book independently on two devices.
+2. Open the book where local and remote differ significantly.
+3. Expect GrimmLink to show `Use Local`, `Use Remote`, and `Ignore`.
+4. Verify each action:
+   - `Use Local` pushes local progress
+   - `Use Remote` attempts a safe jump
+   - `Ignore` keeps both states untouched
