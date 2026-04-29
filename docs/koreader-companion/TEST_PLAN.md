@@ -86,13 +86,13 @@ If emulator, ADB, or device access is unavailable:
 
 ## Plugin Manual Runtime Checks
 
-Plugin path:
+Plugin repository:
 
-- [plugins/grimmlink.koplugin](C:/Users/x_boa/Documents/New%20project/grimmory/plugins/grimmlink.koplugin)
+- [0xstillb/grimmlink](https://github.com/0xstillb/grimmlink)
 
 Recommended KOReader checks:
 
-1. Install `grimmlink.koplugin` into a KOReader plugins directory.
+1. Clone or download `grimmlink.koplugin` from the separate GrimmLink repository, then install it into a KOReader plugins directory.
 2. Configure Grimmory server URL, KOReader username, and `x-auth-key` value.
 3. Open a matched EPUB.
 4. Verify GrimmLink can pull remote progress on open.

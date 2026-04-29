@@ -9,7 +9,7 @@
 
 ## Included Features
 
-- [ ] GrimmLink plugin package included at `plugins/grimmlink.koplugin`
+- [ ] GrimmLink plugin package published from the separate `grimmlink` repository
 - [ ] Companion auth behavior documented (`x-auth-user` / `x-auth-key`)
 - [ ] Book hash matching support documented
 - [ ] KOReader-native progress sync support documented

@@ -2,7 +2,8 @@
 
 ## Implementation Strategy
 
-- The KOReader plugin code now lives in [plugins/grimmlink.koplugin](C:/Users/x_boa/Documents/New%20project/grimmory/plugins/grimmlink.koplugin)
+- The KOReader plugin code now lives in the separate GrimmLink repository: [0xstillb/grimmlink](https://github.com/0xstillb/grimmlink)
+- The active KOReader plugin package path is `grimmlink.koplugin` inside that repository
 - We intentionally keep plugin code isolated from Grimmory backend/frontend source trees
 - The implementation reuses ideas from BookLoreSync, but does not vendor the whole legacy plugin blindly
 - The shipped scope is MVP-focused: auth, hash match, progress sync, reading sessions, offline queue, and local/remote progress conflict handling
