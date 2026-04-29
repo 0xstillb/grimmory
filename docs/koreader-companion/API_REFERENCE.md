@@ -7,6 +7,8 @@ This document reflects the GrimmLink MVP plugin/backend contract currently imple
 - All `/api/koreader/**` endpoints require `x-auth-user` and `x-auth-key`
 - `/api/v1/reading-sessions/**` accepts KOReader companion auth and remains compatible with existing authenticated Grimmory sessions
 - The plugin should treat `x-auth-key` as a precomputed auth value and send it verbatim
+- Missing or invalid KOReader companion credentials currently return `401 Unauthorized`
+- The KOReader auth filter uses servlet `sendError(...)` responses for auth failures, so callers should not assume the auth failure body is JSON
 
 ## GET `/api/koreader/users/auth`
 
@@ -138,12 +140,12 @@ This document reflects the GrimmLink MVP plugin/backend contract currently imple
 ```
 
 - Expected response shape:
-
 - Expected response shape:
   - `202 Accepted`
   - empty body
 - Plugin note:
   - GrimmLink uses single-session upload for one-item flushes
+  - the current backend requires `bookId`; the plugin resolves/caches a Grimmory match before uploading sessions
 - Phase status: MVP
 
 ## POST `/api/v1/reading-sessions/batch`
@@ -219,6 +221,8 @@ This document reflects the GrimmLink MVP plugin/backend contract currently imple
 ```
 
 - Phase status: MVP
+- Plugin note:
+  - the GrimmLink MVP plugin does not currently call this endpoint
 
 ## Plugin Endpoint Usage Summary
 
