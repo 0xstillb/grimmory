@@ -16,6 +16,12 @@ plugins {
 group = "org.booklore"
 version = "0.0.1-SNAPSHOT"
 
+providers.gradleProperty("backendBuildDir")
+    .orNull
+    ?.let { customBuildDir ->
+        layout.buildDirectory.set(file(customBuildDir))
+    }
+
 val defaultFrontendDistDir = file("${rootDir}/../frontend/dist/grimmory/browser")
 val configuredFrontendDistDir = providers.gradleProperty("frontendDistDir")
     .map { file(it) }
@@ -202,7 +208,27 @@ hibernate {
 tasks.named<Test>("test") {
     useJUnitPlatform()
     maxHeapSize = "2560m"
+    maxParallelForks = 1
     jvmArgs("-XX:+EnableDynamicAgentLoading", "--enable-native-access=ALL-UNNAMED", "--enable-preview")
+    val taskName = name
+    val runtimeTmpDir = layout.buildDirectory.dir("tmp/test-runtime/$taskName")
+    val prefsDir = layout.buildDirectory.dir("tmp/java-prefs/$taskName")
+    val junitXmlDir = layout.buildDirectory.dir("test-results/$taskName/junit")
+    val htmlReportDir = layout.buildDirectory.dir("reports/tests/$taskName")
+    val binaryResultsDir = layout.buildDirectory.dir("test-results/$taskName/binary")
+
+    systemProperty("java.io.tmpdir", runtimeTmpDir.get().asFile.absolutePath)
+    systemProperty("java.util.prefs.userRoot", prefsDir.get().asFile.absolutePath)
+    reports.junitXml.outputLocation.set(junitXmlDir)
+    reports.html.outputLocation.set(htmlReportDir)
+    binaryResultsDirectory.set(binaryResultsDir)
+    doFirst {
+        runtimeTmpDir.get().asFile.mkdirs()
+        prefsDir.get().asFile.mkdirs()
+        junitXmlDir.get().asFile.mkdirs()
+        htmlReportDir.get().asFile.mkdirs()
+        binaryResultsDir.get().asFile.mkdirs()
+    }
     finalizedBy(tasks.named("jacocoTestReport"))
 }
 
