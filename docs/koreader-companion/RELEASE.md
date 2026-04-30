@@ -94,3 +94,9 @@
 - [ ] Treat EPUB CFI conversion as best-effort, not as an MVP dependency
 - [ ] Keep KOReader-native progress persisted separately from Web Reader progress
 - [ ] Do not mix KOReader-native progress semantics with Grimmory Web Reader semantics
+## Shelf Sync Policy
+
+- Shelf Sync remove actions must only unlink shelf membership.
+- The backend must never delete Grimmory library records or server-side files for KOReader shelf removals.
+- `two_way_shelf_delete_sync` defaults to OFF.
+- `delete_sdr_on_book_delete` defaults to OFF.

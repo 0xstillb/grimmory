@@ -9,6 +9,7 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.booklore.model.dto.koreader.KoreaderBookSummary;
 import org.booklore.model.dto.koreader.KoreaderShelfSummary;
+import org.booklore.model.dto.koreader.KoreaderShelfRemovalResponse;
 import org.booklore.service.koreader.KoreaderShelfService;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
@@ -54,5 +55,18 @@ public class KoreaderShelfController {
     public ResponseEntity<Resource> downloadBook(
             @Parameter(description = "ID of the book") @PathVariable Long bookId) {
         return koreaderShelfService.downloadBook(bookId);
+    }
+
+    @Operation(summary = "Remove book from shelf", description = "Remove a book from a shelf without deleting the book record or library file.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Shelf membership removed successfully"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "404", description = "Shelf or book not found")
+    })
+    @PostMapping("/shelves/{shelfId}/books/{bookId}/remove")
+    public ResponseEntity<KoreaderShelfRemovalResponse> removeBookFromShelf(
+            @Parameter(description = "ID of the shelf") @PathVariable Long shelfId,
+            @Parameter(description = "ID of the book") @PathVariable Long bookId) {
+        return ResponseEntity.ok(koreaderShelfService.removeBookFromShelf(shelfId, bookId));
     }
 }

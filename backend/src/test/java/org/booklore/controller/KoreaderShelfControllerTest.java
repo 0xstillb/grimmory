@@ -3,6 +3,7 @@ package org.booklore.controller;
 import org.booklore.exception.ApiError;
 import org.booklore.model.dto.koreader.KoreaderBookSummary;
 import org.booklore.model.dto.koreader.KoreaderShelfSummary;
+import org.booklore.model.dto.koreader.KoreaderShelfRemovalResponse;
 import org.booklore.service.koreader.KoreaderShelfService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -121,5 +122,18 @@ class KoreaderShelfControllerTest {
                 .thenThrow(ApiError.BOOK_NOT_FOUND.createException(999L));
 
         assertThrows(RuntimeException.class, () -> controller.downloadBook(999L));
+    }
+
+    @Test
+    void removeBookFromShelf_success() {
+        KoreaderShelfRemovalResponse responseBody = new KoreaderShelfRemovalResponse(10L, 20L, true, false);
+        when(koreaderShelfService.removeBookFromShelf(10L, 20L)).thenReturn(responseBody);
+
+        ResponseEntity<KoreaderShelfRemovalResponse> resp = controller.removeBookFromShelf(10L, 20L);
+
+        assertEquals(HttpStatus.OK, resp.getStatusCode());
+        assertNotNull(resp.getBody());
+        assertTrue(resp.getBody().removedFromShelf());
+        assertFalse(resp.getBody().deletedFromLibrary());
     }
 }

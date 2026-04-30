@@ -307,6 +307,35 @@ This document reflects the GrimmLink MVP plugin/backend contract currently imple
   - user A cannot download user B's books
 - Phase status: Prompt 5 — Shelf Sync
 
+## POST `/api/koreader/shelves/{shelfId}/books/{bookId}/remove`
+
+- Purpose: remove a book from a shelf without deleting the book record or server-side file
+- Auth requirement: required
+- Request payload: none
+- Path params:
+  - `shelfId`: Grimmory shelf ID
+  - `bookId`: Grimmory book ID
+- Expected response shape:
+
+```json
+{
+  "shelfId": 1,
+  "bookId": 42,
+  "removedFromShelf": true,
+  "deletedFromLibrary": false
+}
+```
+
+- Notes:
+  - the endpoint removes only the shelf membership join row
+  - it never deletes the Grimmory book record
+  - it never deletes the Grimmory server-side file
+  - it is intended for KOReader shelf delete sync only
+- Error behavior:
+  - `403 Forbidden` if user cannot access the shelf or book
+  - `404 Not Found` if shelf or book does not exist
+- Phase status: Prompt 5 â€” Shelf Sync
+
 ## Plugin Endpoint Usage Summary
 
 The GrimmLink plugin currently uses:
@@ -320,6 +349,7 @@ The GrimmLink plugin currently uses:
 - `GET /api/koreader/shelves` (Shelf Sync)
 - `GET /api/koreader/shelves/{shelfId}/books` (Shelf Sync)
 - `GET /api/koreader/books/{bookId}/download` (Shelf Sync)
+- `POST /api/koreader/shelves/{shelfId}/books/{bookId}/remove` (Shelf Sync)
 
 The plugin does not currently implement:
 

@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.booklore.exception.ApiError;
 import org.booklore.model.dto.koreader.KoreaderBookSummary;
 import org.booklore.model.dto.koreader.KoreaderShelfSummary;
+import org.booklore.model.dto.koreader.KoreaderShelfRemovalResponse;
 import org.booklore.model.entity.AuthorEntity;
 import org.booklore.model.entity.BookEntity;
 import org.booklore.model.entity.BookFileEntity;
@@ -16,6 +17,7 @@ import org.booklore.service.book.BookDownloadService;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -70,6 +72,33 @@ public class KoreaderShelfService {
 
         log.info("GrimmLink shelf download: userId={} bookId={}", reader.getId(), bookId);
         return bookDownloadService.downloadBook(bookId);
+    }
+
+    @Transactional
+    public KoreaderShelfRemovalResponse removeBookFromShelf(Long shelfId, Long bookId) {
+        BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
+
+        ShelfEntity shelf = shelfRepository.findByIdWithUser(shelfId)
+                .orElseThrow(() -> ApiError.SHELF_NOT_FOUND.createException(shelfId));
+        if (!canReadShelf(reader, shelf)) {
+            throw ApiError.FORBIDDEN.createException("Shelf is not accessible to the authenticated user");
+        }
+
+        BookEntity book = bookRepository.findByIdWithBookFiles(bookId)
+                .orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(bookId));
+        if (!canAccessBook(reader, book)) {
+            throw ApiError.FORBIDDEN.createException("Book is not accessible to the authenticated user");
+        }
+
+        boolean removed = book.getShelves().removeIf(existingShelf -> existingShelf.getId().equals(shelfId));
+        if (removed) {
+            bookRepository.save(book);
+        } else {
+            log.info("GrimmLink shelf remove: bookId={} was not linked to shelfId={}", bookId, shelfId);
+        }
+
+        log.info("GrimmLink shelf remove: userId={} shelfId={} bookId={}", reader.getId(), shelfId, bookId);
+        return new KoreaderShelfRemovalResponse(shelfId, bookId, true, false);
     }
 
     private KoreaderBookSummary toBookSummary(BookEntity book) {

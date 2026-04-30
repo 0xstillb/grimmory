@@ -359,6 +359,10 @@ Expected:
 
 ### Manual Shelf API Checks
 
+- `removeBookFromShelf_success` â€” 200 with shelf membership removed only
+- `removeBookFromShelf_forbidden_propagates` â€” 403 when shelf or book is inaccessible
+- `removeBookFromShelf_notFound_propagates` â€” 404 for unknown shelf or book
+
 Assumptions: same as above; replace `SHELF_ID` and `BOOK_ID` with real values.
 
 #### List shelves
@@ -406,6 +410,22 @@ Expected:
 - `404` if book does not exist
 
 #### User isolation check for shelf
+
+#### Remove book from shelf
+
+```bash
+curl -i -X POST \
+  -H "x-auth-user: USERNAME" \
+  -H "x-auth-key: MD5_KEY" \
+  "BASE_URL/api/koreader/shelves/SHELF_ID/books/BOOK_ID/remove"
+```
+
+Expected:
+- `200 OK`
+- JSON body with `removedFromShelf: true` and `deletedFromLibrary: false`
+- the shelf membership is removed only
+- `403` if shelf or book is inaccessible
+- `404` if shelf or book does not exist
 
 1. Create a private shelf for `USERNAME_A`
 2. Attempt to list books with `USERNAME_B`
@@ -460,3 +480,10 @@ Use these runtime checks when KOReader execution is available:
    - `Use Local` pushes local progress
    - `Use Remote` attempts a safe jump
    - `Ignore` keeps both states untouched
+### Shelf Delete Policy Update
+
+- Shelf Sync delete behavior is two-way only when explicitly enabled in the plugin
+- Remove-from-shelf calls must hit `POST /api/koreader/shelves/{shelfId}/books/{bookId}/remove`
+- The backend must never delete the Grimmory book record or server-side file for KOReader shelf removals
+- The plugin must never delete user-added files or files outside the GrimmLink download directory
+- `.sdr` removal stays optional and default-off
