@@ -488,3 +488,54 @@ Use these runtime checks when KOReader execution is available:
 - The backend must never delete the Grimmory book record or server-side file for KOReader shelf removals
 - The plugin must never delete user-added files or files outside the GrimmLink download directory
 - `.sdr` removal stays optional and default-off
+
+## Annotation / Bookmark / Rating Sync (Prompt 6)
+
+### Backend unit tests
+
+`KoreaderAnnotationControllerTest` (run with
+`./gradlew test --tests "org.booklore.controller.KoreaderAnnotationControllerTest"`):
+
+- `listAnnotations_returnsList`
+- `listAnnotations_forbiddenPropagates`
+- `upsertAnnotations_returnsBatchResult`
+- `listBookmarks_returnsList`
+- `upsertBookmarks_returnsBatchResult`
+- `upsertBookmarks_bookNotFoundPropagates`
+- `getRating_returnsCurrentValue`
+- `updateRating_returnsUpdatedValue`
+- `updateRating_invalidValuePropagates`
+
+### Manual checks (curl)
+
+```
+# annotations: list
+curl -H "x-auth-user: user" -H "x-auth-key: <md5>" \
+  http://localhost:6060/api/koreader/books/42/annotations
+
+# annotations: upsert
+curl -X POST -H "x-auth-user: user" -H "x-auth-key: <md5>" \
+  -H "Content-Type: application/json" \
+  -d '[{"dedupeKey":"abc","koreaderPos":"/x[1]","text":"hello","source":"KOREADER"}]' \
+  http://localhost:6060/api/koreader/books/42/annotations/batch
+
+# bookmarks: list / upsert (same shape, /bookmarks)
+
+# rating: get / put
+curl -H "x-auth-user: user" -H "x-auth-key: <md5>" \
+  http://localhost:6060/api/koreader/books/42/rating
+curl -X PUT -H "x-auth-user: user" -H "x-auth-key: <md5>" \
+  -H "Content-Type: application/json" \
+  -d '{"rating": 8}' \
+  http://localhost:6060/api/koreader/books/42/rating
+```
+
+### Safety invariants to verify
+
+- Sending the same `dedupeKey` twice does NOT create duplicate rows.
+- Setting a rating outside `1..10` (other than `null`) returns `400`.
+- A user without library access to a book gets `403` on every endpoint.
+- `BookEntity` row count for the test book is unchanged before / after upserts.
+- The legacy `annotations` and `book_marks` tables are unchanged before / after.
+- Setting `koreaderUpdatedAt` to a value older than the stored row keeps the
+  stored row (skipped count > 0).

@@ -101,3 +101,19 @@
 - Public shelf visibility does not grant write access; only the shelf owner or an admin may remove shelf membership.
 - `two_way_shelf_delete_sync` defaults to OFF.
 - `delete_sdr_on_book_delete` defaults to OFF.
+
+## Annotation / Bookmark / Rating Sync (Prompt 6)
+
+- New tables added: `koreader_annotations`, `koreader_bookmarks` (auto-created
+  by Hibernate on startup; the legacy `annotations` and `book_marks` tables
+  used by the Web Reader are NOT touched).
+- New endpoints added under `/api/koreader/books/{bookId}/`:
+  `annotations`, `annotations/batch`, `bookmarks`, `bookmarks/batch`,
+  `rating` (GET/PUT).
+- Rating reuses `user_book_progress.personal_rating` (1..10).
+- Raw KOReader location (xpointer/page) is preserved as-is — no EPUB CFI
+  conversion. Web Reader bridge remains out of scope.
+- Endpoints never delete book records or library files. They never call
+  shelf removal or library delete code paths.
+- Dedupe is enforced via a unique constraint on
+  `(user_id, book_id, dedupe_key)` in both new tables.
