@@ -14,6 +14,8 @@ import lombok.NoArgsConstructor;
 public class KoreaderAnnotationDto {
 
     private Long id;
+    private Long bookId;
+    private String type;
 
     /** Stable dedupe key computed by the plugin. Required for batch upserts. */
     private String dedupeKey;
@@ -31,4 +33,6 @@ public class KoreaderAnnotationDto {
 
     private Long koreaderCreatedAt;
     private Long koreaderUpdatedAt;
+    private Long createdAt;
+    private Long updatedAt;
 }

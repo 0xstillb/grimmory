@@ -489,7 +489,7 @@ Use these runtime checks when KOReader execution is available:
 - The plugin must never delete user-added files or files outside the GrimmLink download directory
 - `.sdr` removal stays optional and default-off
 
-## Annotation / Bookmark / Rating Sync (Prompt 6)
+## Annotation / Bookmark / Rating Sync (Prompt 6 / Prompt 7A)
 
 ### Backend unit tests
 
@@ -502,6 +502,9 @@ Use these runtime checks when KOReader execution is available:
 - `listBookmarks_returnsList`
 - `upsertBookmarks_returnsBatchResult`
 - `upsertBookmarks_bookNotFoundPropagates`
+- `listAnnotations_sinceUsesIncrementalRepositoryAndReturnsMergeMetadata`
+- `listBookmarks_sinceUsesIncrementalRepositoryAndReturnsMergeMetadata`
+- `listAnnotations_forbiddenWhenBookIsOutsideAccessibleLibraries`
 - `getRating_returnsCurrentValue`
 - `updateRating_returnsUpdatedValue`
 - `updateRating_invalidValuePropagates`
@@ -539,3 +542,8 @@ curl -X PUT -H "x-auth-user: user" -H "x-auth-key: <md5>" \
 - The legacy `annotations` and `book_marks` tables are unchanged before / after.
 - Setting `koreaderUpdatedAt` to a value older than the stored row keeps the
   stored row (skipped count > 0).
+- `GET /annotations?since=...` and `GET /bookmarks?since=...` only return rows
+  updated at or after the provided watermark.
+- Prompt 7A pull / merge preserves raw `koreaderPos` / `page`, never deletes
+  local user annotations, never writes Web Reader fields, and does not require
+  EPUB CFI conversion.

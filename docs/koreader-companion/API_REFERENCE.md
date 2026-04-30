@@ -337,11 +337,12 @@ This document reflects the GrimmLink MVP plugin/backend contract currently imple
   - `404 Not Found` if shelf or book does not exist
 - Phase status: Prompt 5 â€” Shelf Sync
 
-## Annotation / Bookmark / Rating Sync (Prompt 6)
+## Annotation / Bookmark / Rating Sync (Prompt 6 / Prompt 7A)
 
 These endpoints back the GrimmLink companion's rating, highlight, note and
-bookmark sync. They are KOReader-native: raw KOReader location strings
-(xpointer / page) are preserved as-is and are never converted to EPUB CFI.
+bookmark sync plus Prompt 7A's remote pull / two-way merge. They are
+KOReader-native: raw KOReader location strings (xpointer / page) are
+preserved as-is and are never converted to EPUB CFI.
 The Web Reader's existing CFI-based `annotations` / `book_marks` tables are
 NOT touched by these endpoints.
 
@@ -349,10 +350,11 @@ None of these endpoints delete book records or library files.
 
 ### `GET /api/koreader/books/{bookId}/annotations`
 - Returns: `200 OK` with `KoreaderAnnotationDto[]`
+- Optional query: `since=<epochSeconds>` for incremental pull / merge
 - Errors: `403 Forbidden`, `404 Book not found`
-- Each item includes: `id`, `dedupeKey`, `koreaderPos`, `page`, `chapter`,
-  `text`, `note`, `color`, `drawer`, `source`, `koreaderCreatedAt`,
-  `koreaderUpdatedAt`.
+- Each item includes: `id`, `bookId`, `type`, `dedupeKey`, `koreaderPos`,
+  `page`, `chapter`, `text`, `note`, `color`, `drawer`, `source`,
+  `koreaderCreatedAt`, `koreaderUpdatedAt`, `createdAt`, `updatedAt`.
 
 ### `POST /api/koreader/books/{bookId}/annotations/batch`
 - Body: `KoreaderAnnotationDto[]` — each item must include `dedupeKey`.
@@ -364,9 +366,11 @@ None of these endpoints delete book records or library files.
 
 ### `GET /api/koreader/books/{bookId}/bookmarks`
 - Returns: `200 OK` with `KoreaderBookmarkDto[]`
+- Optional query: `since=<epochSeconds>` for incremental pull / merge
 - Errors: `403`, `404`
-- Each item includes: `id`, `dedupeKey`, `koreaderPos`, `page`, `chapter`,
-  `text`, `note`, `source`, `koreaderCreatedAt`.
+- Each item includes: `id`, `bookId`, `type`, `dedupeKey`, `koreaderPos`,
+  `page`, `chapter`, `text`, `note`, `source`, `koreaderCreatedAt`,
+  `createdAt`, `updatedAt`.
 
 ### `POST /api/koreader/books/{bookId}/bookmarks/batch`
 - Body: `KoreaderBookmarkDto[]` — each item must include `dedupeKey`.
@@ -386,8 +390,10 @@ None of these endpoints delete book records or library files.
 - Never deletes any `BookEntity` or `BookFileEntity`.
 - Never deletes the existing CFI-based `AnnotationEntity` / `BookMarkEntity`
   rows used by the Web Reader.
-- Web Reader bridge and EPUB CFI conversion are **out of scope** for
-  Prompt 6 and remain unimplemented.
+- Prompt 7A only supports KOReader-native annotation pull / merge. It does
+  not write Web Reader fields and does not perform EPUB CFI conversion.
+- Web Reader bridge and EPUB CFI conversion move to Prompt 8 and remain
+  unimplemented in this phase.
 
 ## Plugin Endpoint Usage Summary
 

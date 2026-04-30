@@ -45,8 +45,10 @@ public class KoreaderAnnotationController {
     })
     @GetMapping("/books/{bookId}/annotations")
     public ResponseEntity<List<KoreaderAnnotationDto>> listAnnotations(
-            @Parameter(description = "ID of the book") @PathVariable Long bookId) {
-        return ResponseEntity.ok(annotationService.listAnnotations(bookId));
+            @Parameter(description = "ID of the book") @PathVariable Long bookId,
+            @Parameter(description = "Optional epoch-second watermark for incremental pulls")
+            @RequestParam(name = "since", required = false) Long sinceEpochSec) {
+        return ResponseEntity.ok(annotationService.listAnnotations(bookId, sinceEpochSec));
     }
 
     @Operation(summary = "Batch upsert annotations",
@@ -70,8 +72,10 @@ public class KoreaderAnnotationController {
     })
     @GetMapping("/books/{bookId}/bookmarks")
     public ResponseEntity<List<KoreaderBookmarkDto>> listBookmarks(
-            @Parameter(description = "ID of the book") @PathVariable Long bookId) {
-        return ResponseEntity.ok(annotationService.listBookmarks(bookId));
+            @Parameter(description = "ID of the book") @PathVariable Long bookId,
+            @Parameter(description = "Optional epoch-second watermark for incremental pulls")
+            @RequestParam(name = "since", required = false) Long sinceEpochSec) {
+        return ResponseEntity.ok(annotationService.listBookmarks(bookId, sinceEpochSec));
     }
 
     @Operation(summary = "Batch upsert bookmarks",

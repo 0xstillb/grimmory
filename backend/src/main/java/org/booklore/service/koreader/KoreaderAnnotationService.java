@@ -19,6 +19,9 @@ import org.booklore.repository.koreader.KoreaderBookmarkRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -49,9 +52,15 @@ public class KoreaderAnnotationService {
 
     // ---------- Annotations ----------
 
-    public List<KoreaderAnnotationDto> listAnnotations(Long bookId) {
+    public List<KoreaderAnnotationDto> listAnnotations(Long bookId, Long sinceEpochSec) {
         BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
         BookEntity book = requireAccessibleBook(reader, bookId);
+        if (sinceEpochSec != null) {
+            LocalDateTime since = LocalDateTime.ofInstant(Instant.ofEpochSecond(sinceEpochSec), ZoneOffset.UTC);
+            return annotationRepository
+                    .findByUserIdAndBookIdAndUpdatedAtGreaterThanEqual(reader.getId(), book.getId(), since)
+                    .stream().map(this::toAnnotationDto).toList();
+        }
         return annotationRepository.findByUserIdAndBookId(reader.getId(), book.getId()).stream()
                 .map(this::toAnnotationDto)
                 .toList();
@@ -135,9 +144,15 @@ public class KoreaderAnnotationService {
 
     // ---------- Bookmarks ----------
 
-    public List<KoreaderBookmarkDto> listBookmarks(Long bookId) {
+    public List<KoreaderBookmarkDto> listBookmarks(Long bookId, Long sinceEpochSec) {
         BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
         BookEntity book = requireAccessibleBook(reader, bookId);
+        if (sinceEpochSec != null) {
+            LocalDateTime since = LocalDateTime.ofInstant(Instant.ofEpochSecond(sinceEpochSec), ZoneOffset.UTC);
+            return bookmarkRepository
+                    .findByUserIdAndBookIdAndUpdatedAtGreaterThanEqual(reader.getId(), book.getId(), since)
+                    .stream().map(this::toBookmarkDto).toList();
+        }
         return bookmarkRepository.findByUserIdAndBookId(reader.getId(), book.getId()).stream()
                 .map(this::toBookmarkDto)
                 .toList();
@@ -264,6 +279,8 @@ public class KoreaderAnnotationService {
     private KoreaderAnnotationDto toAnnotationDto(KoreaderAnnotationEntity e) {
         return KoreaderAnnotationDto.builder()
                 .id(e.getId())
+                .bookId(e.getBook() != null ? e.getBook().getId() : null)
+                .type("annotation")
                 .dedupeKey(e.getDedupeKey())
                 .koreaderPos(e.getKoreaderPos())
                 .page(e.getPage())
@@ -275,12 +292,16 @@ public class KoreaderAnnotationService {
                 .source(e.getSource())
                 .koreaderCreatedAt(e.getKoreaderCreatedAt())
                 .koreaderUpdatedAt(e.getKoreaderUpdatedAt())
+                .createdAt(toEpochSeconds(e.getCreatedAt()))
+                .updatedAt(toEpochSeconds(e.getUpdatedAt()))
                 .build();
     }
 
     private KoreaderBookmarkDto toBookmarkDto(KoreaderBookmarkEntity e) {
         return KoreaderBookmarkDto.builder()
                 .id(e.getId())
+                .bookId(e.getBook() != null ? e.getBook().getId() : null)
+                .type("bookmark")
                 .dedupeKey(e.getDedupeKey())
                 .koreaderPos(e.getKoreaderPos())
                 .page(e.getPage())
@@ -289,7 +310,16 @@ public class KoreaderAnnotationService {
                 .note(e.getNote())
                 .source(e.getSource())
                 .koreaderCreatedAt(e.getKoreaderCreatedAt())
+                .createdAt(toEpochSeconds(e.getCreatedAt()))
+                .updatedAt(toEpochSeconds(e.getUpdatedAt()))
                 .build();
+    }
+
+    private Long toEpochSeconds(LocalDateTime value) {
+        if (value == null) {
+            return null;
+        }
+        return value.toEpochSecond(ZoneOffset.UTC);
     }
 
     private String safeError(Exception e) {

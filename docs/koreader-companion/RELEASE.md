@@ -102,7 +102,7 @@
 - `two_way_shelf_delete_sync` defaults to OFF.
 - `delete_sdr_on_book_delete` defaults to OFF.
 
-## Annotation / Bookmark / Rating Sync (Prompt 6)
+## Annotation / Bookmark / Rating Sync (Prompt 6 / Prompt 7A)
 
 - New tables added: `koreader_annotations`, `koreader_bookmarks` (auto-created
   by Hibernate on startup; the legacy `annotations` and `book_marks` tables
@@ -110,6 +110,10 @@
 - New endpoints added under `/api/koreader/books/{bookId}/`:
   `annotations`, `annotations/batch`, `bookmarks`, `bookmarks/batch`,
   `rating` (GET/PUT).
+- `GET /annotations` and `GET /bookmarks` now accept optional
+  `?since=<epochSeconds>` for incremental pull / merge.
+- Pull responses include stable merge metadata (`bookId`, `type`, raw
+  `koreaderPos` / `page`, source, created/update timestamps).
 - Rating reuses `user_book_progress.personal_rating` (1..10).
 - Raw KOReader location (xpointer/page) is preserved as-is — no EPUB CFI
   conversion. Web Reader bridge remains out of scope.
@@ -117,3 +121,5 @@
   shelf removal or library delete code paths.
 - Dedupe is enforced via a unique constraint on
   `(user_id, book_id, dedupe_key)` in both new tables.
+- Prompt 7A still does not write any Web Reader annotation fields; Prompt 8
+  remains the dedicated phase for Web Reader Bridge + EPUB CFI conversion.

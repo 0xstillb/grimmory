@@ -44,9 +44,9 @@ class KoreaderAnnotationControllerTest {
         List<KoreaderAnnotationDto> items = List.of(
                 KoreaderAnnotationDto.builder().id(1L).dedupeKey("k1").text("hi").build()
         );
-        when(annotationService.listAnnotations(42L)).thenReturn(items);
+        when(annotationService.listAnnotations(42L, null)).thenReturn(items);
 
-        ResponseEntity<List<KoreaderAnnotationDto>> resp = controller.listAnnotations(42L);
+        ResponseEntity<List<KoreaderAnnotationDto>> resp = controller.listAnnotations(42L, null);
 
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertNotNull(resp.getBody());
@@ -56,9 +56,9 @@ class KoreaderAnnotationControllerTest {
 
     @Test
     void listAnnotations_forbiddenPropagates() {
-        when(annotationService.listAnnotations(anyLong()))
+        when(annotationService.listAnnotations(anyLong(), any()))
                 .thenThrow(ApiError.FORBIDDEN.createException("nope"));
-        assertThrows(RuntimeException.class, () -> controller.listAnnotations(42L));
+        assertThrows(RuntimeException.class, () -> controller.listAnnotations(42L, null));
     }
 
     @Test
@@ -87,9 +87,9 @@ class KoreaderAnnotationControllerTest {
         List<KoreaderBookmarkDto> items = List.of(
                 KoreaderBookmarkDto.builder().id(1L).dedupeKey("b1").chapter("Ch 1").build()
         );
-        when(annotationService.listBookmarks(7L)).thenReturn(items);
+        when(annotationService.listBookmarks(7L, null)).thenReturn(items);
 
-        ResponseEntity<List<KoreaderBookmarkDto>> resp = controller.listBookmarks(7L);
+        ResponseEntity<List<KoreaderBookmarkDto>> resp = controller.listBookmarks(7L, null);
 
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertNotNull(resp.getBody());
