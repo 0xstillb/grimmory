@@ -62,7 +62,17 @@ If emulator, ADB, or device access is unavailable:
 
 - verify KOReader EPUB progress is stored in KOReader-native fields only
 - verify percent/raw location/page counts/device/timestamp survive round trips
-- verify no write occurs to Grimmory Web Reader progress fields
+- verify optional Web Reader bridge writes stay separate from KOReader-native progress storage
+
+## Web Reader Bridge Checks (Prompt 8)
+
+- verify `GET /api/koreader/books/{bookId}/web-progress` requires auth and book access
+- verify `PUT /api/koreader/books/{bookId}/web-progress` never deletes files or book records
+- verify newer Web Reader progress is not overwritten without a newer timestamp or explicit forced conflict resolution
+- verify `POST /api/koreader/books/{bookId}/cfi/resolve` returns `converted=false` with a clear reason when conversion is unsafe or unsupported
+- verify raw KOReader location/page/xpointer remains available even when CFI conversion fails
+- verify bridge writes do not modify the `koreader_progress` table
+- verify bridge-disabled plugin behavior still uses KOReader-native sync only
 
 ## Moon+ Reader-Like Sync Scenarios
 
@@ -547,3 +557,5 @@ curl -X PUT -H "x-auth-user: user" -H "x-auth-key: <md5>" \
 - Prompt 7A pull / merge preserves raw `koreaderPos` / `page`, never deletes
   local user annotations, never writes Web Reader fields, and does not require
   EPUB CFI conversion.
+- Prompt 8 Web Reader Bridge keeps Web Reader progress optional and default-off
+  in the plugin; failed bridge conversion never blocks reading or native sync.

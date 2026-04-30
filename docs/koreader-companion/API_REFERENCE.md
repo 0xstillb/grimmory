@@ -112,8 +112,8 @@ This document reflects the GrimmLink MVP plugin/backend contract currently imple
   - backend normalizes `percentage` to `0..100`
   - values in the `0..1` range are accepted and converted
   - KOReader-native progress only
-  - no Web Reader bridge
-  - no EPUB CFI conversion
+  - optional Web Reader bridge calls live on separate `/api/koreader/books/{bookId}/web-progress` endpoints
+  - failed EPUB CFI conversion never blocks native KOReader sync
 - Phase status: MVP
 
 ## POST `/api/v1/reading-sessions`
@@ -391,9 +391,67 @@ None of these endpoints delete book records or library files.
 - Never deletes the existing CFI-based `AnnotationEntity` / `BookMarkEntity`
   rows used by the Web Reader.
 - Prompt 7A only supports KOReader-native annotation pull / merge. It does
-  not write Web Reader fields and does not perform EPUB CFI conversion.
-- Web Reader bridge and EPUB CFI conversion move to Prompt 8 and remain
-  unimplemented in this phase.
+  not write Web Reader fields.
+
+## Web Reader Bridge (Prompt 8)
+
+Prompt 8 adds an optional Web Reader Bridge that stays separate from the
+native KOReader progress endpoints above.
+
+Safety rules:
+
+- it never deletes Grimmory library/server files
+- it never deletes Grimmory book records
+- KOReader-native progress remains preserved separately in `koreader_progress`
+- EPUB CFI conversion is best-effort only
+- failed conversion falls back cleanly and does not break native KOReader sync
+
+### `GET /api/koreader/books/{bookId}/web-progress`
+
+- Returns: `200 OK` with `KoreaderWebProgressResponse`
+- Errors: `403`, `404`
+- Response may include:
+  - `bookId`
+  - `percentage`
+  - `currentPage`
+  - `totalPages`
+  - `epubCfi`
+  - `positionHref`
+  - `contentSourceProgressPercent`
+  - `rawKoreaderLocation`
+  - `rawKoreaderProgress`
+  - `rawKoreaderXPointer`
+  - `source`
+  - `device`
+  - `deviceId`
+  - `timestamp`
+  - `updatedAt`
+  - `conversionStatus`
+  - `conversionConfidence`
+
+### `PUT /api/koreader/books/{bookId}/web-progress`
+
+- Body: `KoreaderWebProgressUpdateRequest`
+- Returns: `200 OK` with `KoreaderWebProgressResponse`
+- Behavior:
+  - validates auth and book access
+  - updates Web Reader progress fields only
+  - does not overwrite newer Web Reader progress unless the request is newer
+    or explicitly forced after a user-facing conflict decision
+  - keeps raw KOReader location/page/xpointer separate from Web Reader fields
+- No delete path is used.
+
+### `POST /api/koreader/books/{bookId}/cfi/resolve`
+
+- Body: `KoreaderCfiResolveRequest`
+- Returns: `200 OK` with `KoreaderCfiResolveResponse`
+- Supports:
+  - best-effort `epubCfi -> KOReader xpointer/location`
+  - best-effort `KOReader xpointer/location -> epubCfi`
+- Failure example behavior:
+  - `converted: false`
+  - reason string explaining why the conversion was unsafe or unsupported
+  - raw KOReader location/page/percentage echoed back for fallback use
 
 ## Plugin Endpoint Usage Summary
 
@@ -415,9 +473,10 @@ The GrimmLink plugin currently uses:
 - `POST /api/koreader/books/{bookId}/bookmarks/batch` (Annotation Sync)
 - `GET /api/koreader/books/{bookId}/rating` (Annotation Sync)
 - `PUT /api/koreader/books/{bookId}/rating` (Annotation Sync)
+- `GET /api/koreader/books/{bookId}/web-progress` (Prompt 8 Web Reader Bridge)
+- `PUT /api/koreader/books/{bookId}/web-progress` (Prompt 8 Web Reader Bridge)
+- `POST /api/koreader/books/{bookId}/cfi/resolve` (Prompt 8 Web Reader Bridge)
 
 The plugin does not currently implement:
 
-- Web Reader bridge
-- EPUB CFI conversion
 - Hardcover rating sync

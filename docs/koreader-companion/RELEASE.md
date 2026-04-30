@@ -15,25 +15,16 @@
 - [ ] KOReader-native progress sync support documented
 - [ ] Reading-session and batch upload support documented
 - [ ] Moon+ Reader-like conflict prompt documented
-- [ ] Shelf Sync — list shelves, list shelf books, download books to local KOReader folder
-- [ ] Shelf Sync — safe local mapping with `shelf_sync_map` SQLite table
-- [ ] Shelf Sync — optional `Delete Removed Books` (default OFF)
-- [ ] Shelf Sync — optional `Delete .sdr When Removing` (default OFF)
+- [ ] Shelf Sync list/download/remove-only contract documented
+- [ ] Annotation push/pull merge documented
+- [ ] Prompt 8 Web Reader Bridge documented as optional and default-OFF
+- [ ] Prompt 8 EPUB CFI conversion documented as best-effort and default-OFF
 
 ## Excluded Features
 
 - [ ] Confirm non-MVP features not included
-- [ ] Confirm no Web Reader bridge
-- [ ] Confirm no EPUB CFI conversion
-- [ ] Confirm deferred features such as ratings/highlights/bookmarks
-- [ ] Confirm auto-update remains disabled for GrimmLink
+- [ ] Confirm deferred features such as Hardcover rating sync
 - [ ] Confirm magic shelves not included in Shelf Sync (regular shelves only for now)
-
-## Migration Notes
-
-- [ ] Confirm database migration requirements
-- [ ] Confirm config changes if any
-- [ ] Confirm plugin upgrade notes
 
 ## Compatibility Notes
 
@@ -47,6 +38,8 @@
 - [ ] Review auth headers and token handling
 - [ ] Review access control on KOReader endpoints
 - [ ] Review logging for secrets or sensitive payloads
+- [ ] Confirm no new delete path touches Grimmory library/server files
+- [ ] Confirm no new delete path touches Grimmory book records
 
 ## Manual Verification Checklist
 
@@ -57,43 +50,27 @@
 - [ ] Reading sessions upload correctly
 - [ ] Offline queue replay works
 - [ ] Conflict choices behave as expected
-- [ ] Remote jump fallback is safe when raw location cannot be applied
-- [ ] Shelf list endpoint returns correct shelves for authenticated user
-- [ ] Shelf books endpoint returns correct books with hash/format/size
-- [ ] Book download endpoint streams file correctly
-- [ ] Download access control prevents cross-user downloads
-- [ ] Shelf Sync plugin downloads missing books
-- [ ] Shelf Sync skips already-downloaded books
-- [ ] Delete Removed Books only removes GrimmLink-tracked files
-- [ ] Progress sync still works after shelf sync
+- [ ] Native progress still works with Web Reader Bridge disabled
+- [ ] Shelf Sync still obeys remove-membership-only delete policy
+- [ ] Annotation sync still preserves local user data
+- [ ] Web Reader Bridge prompts safely before using newer remote Web Reader progress
+- [ ] Failed CFI conversion falls back safely without blocking reading/sync
 
 ## Known Limitations
 
-- [ ] Raw KOReader jump support depends on KOReader runtime APIs available on the device
-- [ ] Progress state is stored as latest local/remote snapshot, not a full per-device history log
-- [ ] Auto-update is intentionally disabled until a GrimmLink-specific release channel exists
-- [ ] Ratings, highlights, bookmarks, shelves, and Web Reader bridge remain later phases
+- [ ] Raw remote jump support still depends on KOReader runtime methods available on the device
+- [ ] Web Reader Bridge stores Web Reader progress separately, but device-side runtime validation is still required on real KOReader hardware
+- [ ] EPUB CFI conversion is best-effort only; percentage fallback is still expected in some books
 
-## Rollback Notes
+## Prompt 8 - Web Reader Bridge
 
-- [ ] Identify rollback branch/tag
-- [ ] Identify schema rollback expectations
-- [ ] Identify plugin downgrade guidance
+- [ ] Keep KOReader-native progress persisted separately in `koreader_progress`
+- [ ] Keep Web Reader progress updates isolated to the Web Reader progress tables
+- [ ] Keep Web Reader Bridge default OFF in the plugin
+- [ ] Keep EPUB CFI conversion default OFF in the plugin
+- [ ] Preserve raw KOReader location/page/xpointer even when bridge sync is enabled
+- [ ] Never let failed CFI conversion block native KOReader sync
 
-## Next Phase Roadmap
-
-- [ ] Ratings sync
-- [ ] Highlights/notes sync
-- [ ] Bookmarks sync
-- [ ] Shelf/library sync
-- [ ] Stabilization follow-up items
-
-## Phase 6 - Web Reader Bridge
-
-- [ ] Keep Web Reader bridge work in a later dedicated phase only
-- [ ] Treat EPUB CFI conversion as best-effort, not as an MVP dependency
-- [ ] Keep KOReader-native progress persisted separately from Web Reader progress
-- [ ] Do not mix KOReader-native progress semantics with Grimmory Web Reader semantics
 ## Shelf Sync Policy
 
 - Shelf Sync remove actions must only unlink shelf membership.
@@ -104,22 +81,11 @@
 
 ## Annotation / Bookmark / Rating Sync (Prompt 6 / Prompt 7A)
 
-- New tables added: `koreader_annotations`, `koreader_bookmarks` (auto-created
-  by Hibernate on startup; the legacy `annotations` and `book_marks` tables
-  used by the Web Reader are NOT touched).
-- New endpoints added under `/api/koreader/books/{bookId}/`:
-  `annotations`, `annotations/batch`, `bookmarks`, `bookmarks/batch`,
-  `rating` (GET/PUT).
-- `GET /annotations` and `GET /bookmarks` now accept optional
-  `?since=<epochSeconds>` for incremental pull / merge.
-- Pull responses include stable merge metadata (`bookId`, `type`, raw
-  `koreaderPos` / `page`, source, created/update timestamps).
-- Rating reuses `user_book_progress.personal_rating` (1..10).
-- Raw KOReader location (xpointer/page) is preserved as-is — no EPUB CFI
-  conversion. Web Reader bridge remains out of scope.
-- Endpoints never delete book records or library files. They never call
-  shelf removal or library delete code paths.
-- Dedupe is enforced via a unique constraint on
-  `(user_id, book_id, dedupe_key)` in both new tables.
-- Prompt 7A still does not write any Web Reader annotation fields; Prompt 8
-  remains the dedicated phase for Web Reader Bridge + EPUB CFI conversion.
+- Annotation sync still uses separate `koreader_annotations` / `koreader_bookmarks` storage.
+- Annotation sync still preserves raw KOReader xpointer/page without requiring EPUB CFI conversion.
+- Prompt 7A still does not write any Web Reader annotation fields.
+- Prompt 8 adds Web Reader Bridge for progress only; it does not change annotation storage rules.
+
+## Next Phase Roadmap
+
+- [ ] Prompt 9 Full Integration / Runtime Test
