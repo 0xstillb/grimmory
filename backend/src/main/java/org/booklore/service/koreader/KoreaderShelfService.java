@@ -80,8 +80,8 @@ public class KoreaderShelfService {
 
         ShelfEntity shelf = shelfRepository.findByIdWithUser(shelfId)
                 .orElseThrow(() -> ApiError.SHELF_NOT_FOUND.createException(shelfId));
-        if (!canReadShelf(reader, shelf)) {
-            throw ApiError.FORBIDDEN.createException("Shelf is not accessible to the authenticated user");
+        if (!canModifyShelf(reader, shelf)) {
+            throw ApiError.FORBIDDEN.createException("Shelf membership can only be modified by the shelf owner or an admin");
         }
 
         BookEntity book = bookRepository.findByIdWithBookFiles(bookId)
@@ -144,6 +144,11 @@ public class KoreaderShelfService {
     private boolean canReadShelf(BookLoreUserEntity reader, ShelfEntity shelf) {
         if (isAdmin(reader)) return true;
         return shelf.isPublic() || shelf.getUser().getId().equals(reader.getId());
+    }
+
+    private boolean canModifyShelf(BookLoreUserEntity reader, ShelfEntity shelf) {
+        if (isAdmin(reader)) return true;
+        return shelf.getUser().getId().equals(reader.getId());
     }
 
     private boolean canAccessBook(BookLoreUserEntity reader, BookEntity book) {

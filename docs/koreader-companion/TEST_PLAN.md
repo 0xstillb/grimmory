@@ -424,6 +424,7 @@ Expected:
 - `200 OK`
 - JSON body with `removedFromShelf: true` and `deletedFromLibrary: false`
 - the shelf membership is removed only
+- public shelves still require owner/admin permission for this mutation
 - `403` if shelf or book is inaccessible
 - `404` if shelf or book does not exist
 

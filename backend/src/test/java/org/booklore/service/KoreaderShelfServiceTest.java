@@ -106,6 +106,24 @@ class KoreaderShelfServiceTest {
         assertEquals(ApiError.FORBIDDEN.getStatus(), exception.getStatus());
     }
 
+    @Test
+    void removeBookFromShelf_forbiddenWhenShelfIsPublicButNotOwned() {
+        BookLoreUserEntity reader = regularReader(1L);
+        ShelfEntity shelf = ShelfEntity.builder().id(10L).user(adminReader(2L)).name("Reading").isPublic(true).build();
+        BookEntity book = BookEntity.builder()
+                .id(20L)
+                .library(LibraryEntity.builder().id(30L).name("Main").build())
+                .build();
+
+        when(securityContextService.requireCurrentReaderEntity(true)).thenReturn(reader);
+        when(shelfRepository.findByIdWithUser(10L)).thenReturn(Optional.of(shelf));
+        when(bookRepository.findByIdWithBookFiles(20L)).thenReturn(Optional.of(book));
+
+        APIException exception = assertThrows(APIException.class, () -> service.removeBookFromShelf(10L, 20L));
+        assertEquals(ApiError.FORBIDDEN.getStatus(), exception.getStatus());
+        verify(bookRepository, never()).save(any(BookEntity.class));
+    }
+
     private BookLoreUserEntity adminReader(Long id) {
         BookLoreUserEntity reader = regularReader(id);
         reader.setPermissions(UserPermissionsEntity.builder().permissionAdmin(true).build());

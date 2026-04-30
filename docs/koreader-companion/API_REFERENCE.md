@@ -330,6 +330,7 @@ This document reflects the GrimmLink MVP plugin/backend contract currently imple
   - the endpoint removes only the shelf membership join row
   - it never deletes the Grimmory book record
   - it never deletes the Grimmory server-side file
+  - public shelf visibility does not grant write access; membership removal requires the shelf owner or an admin
   - it is intended for KOReader shelf delete sync only
 - Error behavior:
   - `403 Forbidden` if user cannot access the shelf or book

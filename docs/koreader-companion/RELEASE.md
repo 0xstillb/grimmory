@@ -98,5 +98,6 @@
 
 - Shelf Sync remove actions must only unlink shelf membership.
 - The backend must never delete Grimmory library records or server-side files for KOReader shelf removals.
+- Public shelf visibility does not grant write access; only the shelf owner or an admin may remove shelf membership.
 - `two_way_shelf_delete_sync` defaults to OFF.
 - `delete_sdr_on_book_delete` defaults to OFF.
