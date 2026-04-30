@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/koreader/books/{bookId}")
-@Tag(name = "KoReader Web Reader Bridge", description = "Optional bridge endpoints for GrimmLink to read/write Web Reader progress without disturbing KOReader-native sync.")
+@Tag(name = "KOReader Web Reader Bridge", description = "Optional bridge endpoints for GrimmLink to read/write Web Reader progress without disturbing KOReader-native sync.")
 public class KoreaderWebReaderBridgeController {
 
     private final KoreaderWebReaderBridgeService bridgeService;

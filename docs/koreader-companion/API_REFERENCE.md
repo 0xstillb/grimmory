@@ -1,482 +1,179 @@
-# GrimmLink MVP API Reference
+# GrimmLink Backend API Reference
 
-This document reflects the GrimmLink MVP plugin/backend contract currently implemented on the fork.
+This document describes the active GrimmLink <-> Grimmory backend contract.
 
-## Authentication Model
+Plugin repository:
 
-- All `/api/koreader/**` endpoints require `x-auth-user` and `x-auth-key`
-- `/api/v1/reading-sessions/**` accepts KOReader companion auth and remains compatible with existing authenticated Grimmory sessions
-- The plugin should treat `x-auth-key` as a precomputed auth value and send it verbatim
-- Missing or invalid KOReader companion credentials currently return `401 Unauthorized`
-- The KOReader auth filter uses servlet `sendError(...)` responses for auth failures, so callers should not assume the auth failure body is JSON
+- [0xstillb/grimmlink](https://github.com/0xstillb/grimmlink)
 
-## GET `/api/koreader/users/auth`
+## Authentication
 
-- Purpose: validate KOReader companion credentials and return basic authorization status
-- Auth requirement: required
-- Request payload: none
-- Expected response shape:
+- All `/api/koreader/**` endpoints require `x-auth-user` and `x-auth-key`.
+- `/api/v1/reading-sessions/**` accepts the same KOReader companion auth.
+- Invalid or missing companion auth returns `401 Unauthorized`.
+- Auth failures currently come from servlet `sendError(...)`, so callers must not assume a JSON error body.
 
-```json
-{
-  "status": "ok",
-  "username": "reader-name",
-  "userId": 123,
-  "syncEnabled": true,
-  "syncWithGrimmoryReader": false
-}
-```
+## Core KOReader Endpoints
 
-- GrimmLink usage:
-  - used by `Test Connection`
-  - used as the primary plugin auth check before sync operations
-- Phase status: MVP
+### `GET /api/koreader/users/auth`
 
-## GET `/api/koreader/books/by-hash/{bookHash}`
+- Purpose: validate KOReader companion credentials.
+- GrimmLink uses it for **Test Connection** and as a lightweight preflight.
+- Response includes:
+  - `status`
+  - `username`
+  - `userId`
+  - `syncEnabled`
+  - `syncWithGrimmoryReader`
 
-- Purpose: find a Grimmory book record using the KOReader-provided content hash
-- Auth requirement: required
-- Request payload: none
-- Path params:
-  - `bookHash`: KOReader-visible file/content hash
-- Expected response shape:
-  - the backend returns the Grimmory `Book` DTO directly
-  - GrimmLink currently relies on `id`, `title`, and other descriptive metadata when present
-- Not-found behavior:
-  - `404 Not Found`
-- Plugin note:
-  - GrimmLink caches successful hash matches locally
-- Phase status: MVP
+### `GET /api/koreader/books/by-hash/{bookHash}`
 
-## GET `/api/koreader/syncs/progress/{bookHash}`
+- Purpose: match a local KOReader file to a Grimmory book by hash.
+- Common plugin fields used from the response:
+  - `id`
+  - `title`
+  - descriptive metadata when present
+- Failure behavior:
+  - `404 Not Found` for unknown hashes
+  - `403 Forbidden` if the user cannot access the matched book
 
-- Purpose: fetch the latest server-side KOReader-native progress state for a matched book
-- Auth requirement: required
-- Request payload: none
-- Path params:
-  - `bookHash`: KOReader-visible file/content hash
-- Expected response shape:
+### `GET /api/koreader/syncs/progress/{bookHash}`
 
-```json
-{
-  "timestamp": 1777425600,
-  "document": "BOOK_HASH",
-  "bookHash": "BOOK_HASH",
-  "bookId": 456,
-  "fileFormat": "EPUB",
-  "progress": "raw-koreader-progress",
-  "location": "raw-koreader-location",
-  "percentage": 41.2,
-  "currentPage": 101,
-  "totalPages": 245,
-  "device": "KOReader",
-  "device_id": "android-tablet-01"
-}
-```
-
-- Empty-progress behavior:
-  - returns `200 OK` with a book-scoped empty progress body when the book is known but no KOReader progress has been stored yet
-- Phase status: MVP
-
-## PUT `/api/koreader/syncs/progress`
-
-- Purpose: push KOReader-native reading progress to Grimmory
-- Auth requirement: required
-- Expected request payload:
-
-```json
-{
-  "document": "BOOK_HASH",
-  "bookHash": "BOOK_HASH",
-  "fileFormat": "EPUB",
-  "progress": "raw-koreader-progress",
-  "location": "raw-koreader-location",
-  "percentage": 41.2,
-  "currentPage": 101,
-  "totalPages": 245,
-  "device": "KOReader",
-  "deviceId": "android-tablet-01",
-  "timestamp": 1777425600
-}
-```
-
-- Expected response shape:
-
-```json
-{
-  "status": "progress updated"
-}
-```
-
-- Notes:
-  - backend normalizes `percentage` to `0..100`
-  - values in the `0..1` range are accepted and converted
-  - KOReader-native progress only
-  - optional Web Reader bridge calls live on separate `/api/koreader/books/{bookId}/web-progress` endpoints
-  - failed EPUB CFI conversion never blocks native KOReader sync
-- Phase status: MVP
-
-## POST `/api/v1/reading-sessions`
-
-- Purpose: upload a single reading-session event from KOReader
-- Auth requirement: required
-- Expected request payload:
-
-```json
-{
-  "bookId": 456,
-  "bookType": "EPUB",
-  "startTime": "2026-04-29T11:00:00Z",
-  "endTime": "2026-04-29T11:15:00Z",
-  "durationSeconds": 900,
-  "startProgress": 40.0,
-  "endProgress": 41.2,
-  "progressDelta": 1.2,
-  "startLocation": "start-token",
-  "endLocation": "end-token",
-  "device": "KOReader",
-  "deviceId": "android-tablet-01"
-}
-```
-
-- Expected response shape:
-- Expected response shape:
-  - `202 Accepted`
-  - empty body
-- Plugin note:
-  - GrimmLink uses single-session upload for one-item flushes
-  - the current backend requires `bookId`; the plugin resolves/caches a Grimmory match before uploading sessions
-- Phase status: MVP
-
-## POST `/api/v1/reading-sessions/batch`
-
-- Purpose: upload offline-queued reading sessions in batch
-- Auth requirement: required
-- Expected request payload:
-
-```json
-{
-  "bookId": 456,
-  "bookType": "EPUB",
-  "sessions": [
-    {
-      "startTime": "2026-04-29T11:00:00Z",
-      "endTime": "2026-04-29T11:15:00Z",
-      "durationSeconds": 900,
-      "startProgress": 40.0,
-      "endProgress": 41.2,
-      "progressDelta": 1.2,
-      "startLocation": "start-token",
-      "endLocation": "end-token"
-    }
-  ]
-}
-```
-
-- Expected response shape:
-
-```json
-{
-  "totalRequested": 1,
-  "successCount": 1,
-  "results": [
-    {
-      "sessionId": 789,
-      "startTime": "2026-04-29T11:00:00Z",
-      "endTime": "2026-04-29T11:15:00Z"
-    }
-  ]
-}
-```
-
-- Phase status: MVP
-
-## GET `/api/v1/reading-sessions/book/{bookId}`
-
-- Purpose: fetch a paginated session history for diagnostics, analytics, and future sync tooling
-- Auth requirement: required
-- Request payload: none
-- Path params:
-  - `bookId`: Grimmory book ID
-- Expected response shape:
-
-```json
-{
-  "content": [
-    {
-      "sessionId": 789,
-      "startTime": "2026-04-29T11:00:00Z",
-      "endTime": "2026-04-29T11:15:00Z",
-      "durationSeconds": 900,
-      "startProgress": 40.0,
-      "endProgress": 41.2,
-      "device": "KOReader",
-      "deviceId": "android-tablet-01"
-    }
-  ],
-  "page": 0,
-  "size": 20,
-  "totalElements": 1
-}
-```
-
-- Phase status: MVP
-- Plugin note:
-  - the GrimmLink MVP plugin does not currently call this endpoint
-
-## GET `/api/koreader/shelves`
-
-- Purpose: list shelves available to the authenticated KOReader user (personal shelves and public shelves)
-- Auth requirement: required
-- Request payload: none
-- Expected response shape:
-
-```json
-[
-  {
-    "id": 1,
-    "name": "Reading",
-    "type": "PERSONAL",
-    "bookCount": 3
-  },
-  {
-    "id": 2,
-    "name": "Community Picks",
-    "type": "PUBLIC",
-    "bookCount": 12
-  }
-]
-```
-
-- Notes:
-  - `type` is `"PERSONAL"` for shelves owned by the user, `"PUBLIC"` for public shelves
-  - returns an empty array if the user has no shelves
-- Phase status: Prompt 5 — Shelf Sync
-
-## GET `/api/koreader/shelves/{shelfId}/books`
-
-- Purpose: list books in a specific shelf accessible to the authenticated KOReader user
-- Auth requirement: required
-- Request payload: none
-- Path params:
-  - `shelfId`: Grimmory shelf ID
-- Expected response shape:
-
-```json
-[
-  {
-    "bookId": 42,
-    "title": "Dune",
-    "author": "Frank Herbert",
-    "fileName": "Dune.epub",
-    "fileFormat": "EPUB",
-    "fileSizeKb": 512,
-    "bookHash": "abc123def456"
-  }
-]
-```
-
-- Field notes:
-  - `bookHash` is `currentHash` falling back to `initialHash` from the primary `BookFileEntity`; may be null if the file has not been hashed yet
-  - `author` joins all author names with `, `; may be null
-  - `fileSizeKb` may be null for un-analyzed files
-  - only books the user has library access to are returned; shelf may show fewer books than `bookCount` if access is partial
-- Error behavior:
-  - `404 Not Found` if shelf does not exist
-  - `403 Forbidden` if user does not own the shelf and it is not public
-- Phase status: Prompt 5 — Shelf Sync
-
-## GET `/api/koreader/books/{bookId}/download`
-
-- Purpose: download the primary book file for the authenticated KOReader user
-- Auth requirement: required
-- Request payload: none
-- Path params:
-  - `bookId`: Grimmory book ID
-- Response:
-  - `200 OK` with `Content-Type: application/octet-stream`
-  - `Content-Disposition: attachment; filename="<originalFilename>"`
-  - `Content-Length` header set to file size in bytes
-  - response body is the raw book file binary
-- Error behavior:
-  - `403 Forbidden` if user does not have library access to the book
-  - `404 Not Found` if the book does not exist
-  - `500` if the file is missing from disk or cannot be read
-- Security notes:
-  - path traversal is prevented by `FileUtils.requirePathWithinBase()` inside `BookDownloadService`
-  - user A cannot download user B's books
-- Phase status: Prompt 5 — Shelf Sync
-
-## POST `/api/koreader/shelves/{shelfId}/books/{bookId}/remove`
-
-- Purpose: remove a book from a shelf without deleting the book record or server-side file
-- Auth requirement: required
-- Request payload: none
-- Path params:
-  - `shelfId`: Grimmory shelf ID
-  - `bookId`: Grimmory book ID
-- Expected response shape:
-
-```json
-{
-  "shelfId": 1,
-  "bookId": 42,
-  "removedFromShelf": true,
-  "deletedFromLibrary": false
-}
-```
-
-- Notes:
-  - the endpoint removes only the shelf membership join row
-  - it never deletes the Grimmory book record
-  - it never deletes the Grimmory server-side file
-  - public shelf visibility does not grant write access; membership removal requires the shelf owner or an admin
-  - it is intended for KOReader shelf delete sync only
-- Error behavior:
-  - `403 Forbidden` if user cannot access the shelf or book
-  - `404 Not Found` if shelf or book does not exist
-- Phase status: Prompt 5 â€” Shelf Sync
-
-## Annotation / Bookmark / Rating Sync (Prompt 6 / Prompt 7A)
-
-These endpoints back the GrimmLink companion's rating, highlight, note and
-bookmark sync plus Prompt 7A's remote pull / two-way merge. They are
-KOReader-native: raw KOReader location strings (xpointer / page) are
-preserved as-is and are never converted to EPUB CFI.
-The Web Reader's existing CFI-based `annotations` / `book_marks` tables are
-NOT touched by these endpoints.
-
-None of these endpoints delete book records or library files.
-
-### `GET /api/koreader/books/{bookId}/annotations`
-- Returns: `200 OK` with `KoreaderAnnotationDto[]`
-- Optional query: `since=<epochSeconds>` for incremental pull / merge
-- Errors: `403 Forbidden`, `404 Book not found`
-- Each item includes: `id`, `bookId`, `type`, `dedupeKey`, `koreaderPos`,
-  `page`, `chapter`, `text`, `note`, `color`, `drawer`, `source`,
-  `koreaderCreatedAt`, `koreaderUpdatedAt`, `createdAt`, `updatedAt`.
-
-### `POST /api/koreader/books/{bookId}/annotations/batch`
-- Body: `KoreaderAnnotationDto[]` — each item must include `dedupeKey`.
-- Returns: `200 OK` with `KoreaderBatchResultDto`
-  (`received`, `inserted`, `updated`, `skipped`, `failed`, `errors[]`).
-- Behavior: upsert by `(user_id, book_id, dedupe_key)`. If the incoming
-  `koreaderUpdatedAt` is older than the stored value, the row is skipped
-  (server-newer-wins).
-
-### `GET /api/koreader/books/{bookId}/bookmarks`
-- Returns: `200 OK` with `KoreaderBookmarkDto[]`
-- Optional query: `since=<epochSeconds>` for incremental pull / merge
-- Errors: `403`, `404`
-- Each item includes: `id`, `bookId`, `type`, `dedupeKey`, `koreaderPos`,
-  `page`, `chapter`, `text`, `note`, `source`, `koreaderCreatedAt`,
-  `createdAt`, `updatedAt`.
-
-### `POST /api/koreader/books/{bookId}/bookmarks/batch`
-- Body: `KoreaderBookmarkDto[]` — each item must include `dedupeKey`.
-- Returns: `200 OK` with `KoreaderBatchResultDto`.
-- Behavior: upsert by `(user_id, book_id, dedupe_key)`.
-
-### `GET /api/koreader/books/{bookId}/rating`
-- Returns: `200 OK` with `{ "bookId": <id>, "rating": <1..10|null> }`.
-- Backed by `user_book_progress.personal_rating`.
-
-### `PUT /api/koreader/books/{bookId}/rating`
-- Body: `{ "rating": <1..10|null> }` (null clears the rating)
-- Returns: `200 OK` with the new rating.
-- Errors: `400` if rating is outside `1..10` and not null.
-
-### Safety policy
-- Never deletes any `BookEntity` or `BookFileEntity`.
-- Never deletes the existing CFI-based `AnnotationEntity` / `BookMarkEntity`
-  rows used by the Web Reader.
-- Prompt 7A only supports KOReader-native annotation pull / merge. It does
-  not write Web Reader fields.
-
-## Web Reader Bridge (Prompt 8)
-
-Prompt 8 adds an optional Web Reader Bridge that stays separate from the
-native KOReader progress endpoints above.
-
-Safety rules:
-
-- it never deletes Grimmory library/server files
-- it never deletes Grimmory book records
-- KOReader-native progress remains preserved separately in `koreader_progress`
-- EPUB CFI conversion is best-effort only
-- failed conversion falls back cleanly and does not break native KOReader sync
-
-### `GET /api/koreader/books/{bookId}/web-progress`
-
-- Returns: `200 OK` with `KoreaderWebProgressResponse`
-- Errors: `403`, `404`
+- Purpose: fetch the latest KOReader-native progress for a matched book.
 - Response may include:
-  - `bookId`
+  - `progress`
+  - `location`
   - `percentage`
   - `currentPage`
   - `totalPages`
-  - `epubCfi`
-  - `positionHref`
-  - `contentSourceProgressPercent`
-  - `rawKoreaderLocation`
-  - `rawKoreaderProgress`
-  - `rawKoreaderXPointer`
-  - `source`
   - `device`
   - `deviceId`
   - `timestamp`
-  - `updatedAt`
-  - `conversionStatus`
-  - `conversionConfidence`
+- If the book is known but no progress has been stored yet, the endpoint still returns `200 OK` with an empty progress payload for that book.
+
+### `PUT /api/koreader/syncs/progress`
+
+- Purpose: store KOReader-native progress.
+- Expected request fields:
+  - `document`
+  - `bookHash`
+  - `fileFormat`
+  - `progress`
+  - `location`
+  - `percentage`
+  - `currentPage`
+  - `totalPages`
+  - `device`
+  - `deviceId`
+  - `timestamp`
+- Notes:
+  - `percentage` is normalized to `0..100`
+  - values in the `0..1` range are accepted and converted
+  - this endpoint is for KOReader-native progress only
+
+## Reading Session Endpoints
+
+### `POST /api/v1/reading-sessions`
+
+- Purpose: upload a single reading session.
+- Expected behavior:
+  - `202 Accepted`
+  - empty body
+- GrimmLink resolves and caches a Grimmory `bookId` before calling this endpoint.
+
+### `POST /api/v1/reading-sessions/batch`
+
+- Purpose: upload offline-queued reading sessions.
+- Response includes:
+  - `totalRequested`
+  - `successCount`
+  - `results`
+- Validation expectations:
+  - empty `sessions` list -> `400`
+  - oversized batches -> `400`
+
+### `GET /api/v1/reading-sessions/book/{bookId}`
+
+- Purpose: fetch session history for diagnostics and future tooling.
+- GrimmLink MVP does not currently depend on this endpoint at runtime.
+
+## Shelf Sync Endpoints
+
+### `GET /api/koreader/shelves`
+
+- Returns shelves accessible to the authenticated user.
+- Includes personal shelves and public shelves the user can see.
+
+### `GET /api/koreader/shelves/{shelfId}/books`
+
+- Returns the books in a shelf accessible to the authenticated user.
+- Response fields include:
+  - `bookId`
+  - `title`
+  - `author`
+  - `fileName`
+  - `fileFormat`
+  - `fileSizeKb`
+  - `bookHash`
+
+### `GET /api/koreader/books/{bookId}/download`
+
+- Streams the primary book file.
+- Security boundary:
+  - user must have library access
+  - path traversal is blocked by backend file-path validation
+
+### `POST /api/koreader/shelves/{shelfId}/books/{bookId}/remove`
+
+- Removes shelf membership only.
+- It does **not**:
+  - delete the Grimmory book record
+  - delete the Grimmory server-side file
+- Mutation still requires the shelf owner or an admin; public shelf visibility alone is not enough.
+
+## Annotation / Bookmark / Rating Endpoints
+
+These endpoints back GrimmLink's KOReader-native annotation sync.
+
+- `GET /api/koreader/books/{bookId}/annotations`
+- `POST /api/koreader/books/{bookId}/annotations/batch`
+- `GET /api/koreader/books/{bookId}/bookmarks`
+- `POST /api/koreader/books/{bookId}/bookmarks/batch`
+- `GET /api/koreader/books/{bookId}/rating`
+- `PUT /api/koreader/books/{bookId}/rating`
+
+Behavior guarantees:
+
+- dedupe by stable key
+- older incoming annotation/bookmark revisions are skipped
+- raw KOReader xpointer/page data is preserved
+- legacy Web Reader annotation tables are not modified
+
+## Web Reader Bridge Endpoints
+
+The Web Reader Bridge is optional and stays separate from native KOReader sync.
+
+### `GET /api/koreader/books/{bookId}/web-progress`
+
+- Returns bridge-facing Web Reader progress data plus conversion metadata.
 
 ### `PUT /api/koreader/books/{bookId}/web-progress`
 
-- Body: `KoreaderWebProgressUpdateRequest`
-- Returns: `200 OK` with `KoreaderWebProgressResponse`
-- Behavior:
-  - validates auth and book access
-  - updates Web Reader progress fields only
-  - does not overwrite newer Web Reader progress unless the request is newer
-    or explicitly forced after a user-facing conflict decision
-  - keeps raw KOReader location/page/xpointer separate from Web Reader fields
-- No delete path is used.
+- Updates Web Reader progress fields only.
+- Must not overwrite newer Web Reader progress unless the request is newer or explicitly forced after a user decision.
 
 ### `POST /api/koreader/books/{bookId}/cfi/resolve`
 
-- Body: `KoreaderCfiResolveRequest`
-- Returns: `200 OK` with `KoreaderCfiResolveResponse`
-- Supports:
-  - best-effort `epubCfi -> KOReader xpointer/location`
-  - best-effort `KOReader xpointer/location -> epubCfi`
-- Failure example behavior:
-  - `converted: false`
-  - reason string explaining why the conversion was unsafe or unsupported
-  - raw KOReader location/page/percentage echoed back for fallback use
+- Provides best-effort conversion between Web Reader EPUB CFI and KOReader raw location/xpointer data.
+- Unsafe or unsupported conversions return `converted=false` with a reason string.
 
-## Plugin Endpoint Usage Summary
+## Safety Summary
 
-The GrimmLink plugin currently uses:
+The GrimmLink backend contract must preserve these invariants:
 
-- `GET /api/koreader/users/auth`
-- `GET /api/koreader/books/by-hash/{bookHash}`
-- `GET /api/koreader/syncs/progress/{bookHash}`
-- `PUT /api/koreader/syncs/progress`
-- `POST /api/v1/reading-sessions`
-- `POST /api/v1/reading-sessions/batch`
-- `GET /api/koreader/shelves` (Shelf Sync)
-- `GET /api/koreader/shelves/{shelfId}/books` (Shelf Sync)
-- `GET /api/koreader/books/{bookId}/download` (Shelf Sync)
-- `POST /api/koreader/shelves/{shelfId}/books/{bookId}/remove` (Shelf Sync)
-- `GET /api/koreader/books/{bookId}/annotations` (Annotation Sync)
-- `POST /api/koreader/books/{bookId}/annotations/batch` (Annotation Sync)
-- `GET /api/koreader/books/{bookId}/bookmarks` (Annotation Sync)
-- `POST /api/koreader/books/{bookId}/bookmarks/batch` (Annotation Sync)
-- `GET /api/koreader/books/{bookId}/rating` (Annotation Sync)
-- `PUT /api/koreader/books/{bookId}/rating` (Annotation Sync)
-- `GET /api/koreader/books/{bookId}/web-progress` (Prompt 8 Web Reader Bridge)
-- `PUT /api/koreader/books/{bookId}/web-progress` (Prompt 8 Web Reader Bridge)
-- `POST /api/koreader/books/{bookId}/cfi/resolve` (Prompt 8 Web Reader Bridge)
-
-The plugin does not currently implement:
-
-- Hardcover rating sync
+- no Grimmory library/server file delete path
+- no Grimmory book record delete path
+- Shelf Sync remove calls only unlink shelf membership
+- KOReader-native progress stays separate from Web Reader progress
+- Web Reader Bridge failures never block native KOReader sync
+- raw KOReader location/progress/xpointer remains preserved even when bridge conversion fails

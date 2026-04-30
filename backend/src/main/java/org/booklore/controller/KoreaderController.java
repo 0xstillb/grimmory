@@ -21,19 +21,19 @@ import java.util.Map;
 @RestController
 @AllArgsConstructor
 @RequestMapping("/api/koreader")
-@Tag(name = "KoReader", description = "Endpoints for KoReader device integration and progress sync")
+@Tag(name = "KOReader", description = "Endpoints for KOReader device integration and progress sync")
 public class KoreaderController {
 
     private final KoreaderService koreaderService;
 
-    @Operation(summary = "Authorize KoReader user", description = "Authorize a user for KoReader sync.")
+    @Operation(summary = "Authorize KOReader user", description = "Authorize a user for KOReader sync.")
     @ApiResponse(responseCode = "200", description = "User authorized successfully")
     @GetMapping("/users/auth")
     public ResponseEntity<Map<String, Object>> authorizeUser() {
         return koreaderService.authorizeUser();
     }
 
-    @Operation(summary = "Create KoReader user (disabled)", description = "Attempt to register a user via KoReader (always forbidden).")
+    @Operation(summary = "Create KOReader user (disabled)", description = "Attempt to register a user via KOReader (always forbidden).")
     @ApiResponse(responseCode = "403", description = "User registration forbidden")
     @PostMapping("/users/create")
     public ResponseEntity<?> createUser(@Parameter(description = "User data") @RequestBody Map<String, Object> userData) {
@@ -41,7 +41,7 @@ public class KoreaderController {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "User registration via Koreader is disabled"));
     }
 
-    @Operation(summary = "Get KoReader progress", description = "Retrieve reading progress for a book by its hash.")
+    @Operation(summary = "Get KOReader progress", description = "Retrieve reading progress for a book by its hash.")
     @ApiResponse(responseCode = "200", description = "Progress returned successfully")
     @GetMapping("/syncs/progress/{bookHash}")
     public ResponseEntity<KoreaderProgress> getProgress(@Parameter(description = "Book hash") @PathVariable String bookHash) {
@@ -58,10 +58,10 @@ public class KoreaderController {
         return koreaderService.getBookByHash(bookHash);
     }
 
-    @Operation(summary = "Update KoReader progress", description = "Update reading progress for a book.")
+    @Operation(summary = "Update KOReader progress", description = "Update reading progress for a book.")
     @ApiResponse(responseCode = "200", description = "Progress updated successfully")
     @PutMapping("/syncs/progress")
-    public ResponseEntity<?> updateProgress(@Parameter(description = "KoReader progress object") @Valid @RequestBody KoreaderProgress koreaderProgress) {
+    public ResponseEntity<?> updateProgress(@Parameter(description = "KOReader progress object") @Valid @RequestBody KoreaderProgress koreaderProgress) {
         koreaderService.saveProgress(koreaderProgress.resolveBookHash(), koreaderProgress);
         return ResponseEntity.ok(Map.of("status", "progress updated"));
     }

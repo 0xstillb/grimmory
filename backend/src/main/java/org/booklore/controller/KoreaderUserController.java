@@ -18,12 +18,12 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/koreader-users")
 @RequiredArgsConstructor
-@Tag(name = "KoReader Users", description = "Endpoints for managing KoReader user accounts and sync settings")
+@Tag(name = "KOReader Users", description = "Endpoints for managing KOReader user accounts and sync settings")
 public class KoreaderUserController {
 
     private final KoreaderUserService koreaderUserService;
 
-    @Operation(summary = "Get current KoReader user", description = "Retrieve the current KoReader user profile.")
+    @Operation(summary = "Get current KOReader user", description = "Retrieve the current KOReader user profile.")
     @ApiResponse(responseCode = "200", description = "User profile returned successfully")
     @GetMapping("/me")
     @PreAuthorize("@securityUtil.canSyncKoReader() or @securityUtil.isAdmin()")
@@ -31,7 +31,7 @@ public class KoreaderUserController {
         return ResponseEntity.ok(koreaderUserService.getUser());
     }
 
-    @Operation(summary = "Upsert current KoReader user", description = "Create or update the current KoReader user profile.")
+    @Operation(summary = "Upsert current KOReader user", description = "Create or update the current KOReader user profile.")
     @ApiResponse(responseCode = "200", description = "User profile upserted successfully")
     @PutMapping("/me")
     @PreAuthorize("@securityUtil.canSyncKoReader() or @securityUtil.isAdmin()")
@@ -41,7 +41,7 @@ public class KoreaderUserController {
         return ResponseEntity.ok(user);
     }
 
-    @Operation(summary = "Toggle KoReader sync", description = "Enable or disable KoReader sync for the current user.")
+    @Operation(summary = "Toggle KOReader sync", description = "Enable or disable KOReader sync for the current user.")
     @ApiResponse(responseCode = "204", description = "Sync toggled successfully")
     @PatchMapping("/me/sync")
     @PreAuthorize("@securityUtil.canSyncKoReader() or @securityUtil.isAdmin()")

@@ -1,124 +1,92 @@
 # KOReader Companion Architecture
 
-## Design Goals
+## Intent
 
-- Stay upstream-friendly and future-merge-friendly
-- Keep KOReader-specific behavior isolated from Grimmory core logic
-- Preserve OPF support on the fork base branch
-- Avoid coupling KOReader-native progress with Grimmory Web Reader progress
-- Prefer additive backend packages, entities, repositories, DTOs, and services
+Grimmory treats GrimmLink as a companion integration, not a rewrite of the
+existing reading stack.
 
-## Package Direction
+Design goals:
 
-Future implementation should prefer isolated structures such as:
+- keep KOReader logic isolated from unrelated Grimmory features
+- preserve OPF support on the fork base
+- keep KOReader-native progress separate from Web Reader progress
+- keep Shelf Sync and annotation sync behind narrow, reviewable seams
 
-- `controller/koreader`
-- `service/koreader`
-- `dto/koreader`
-- `entity/koreader`
-- `repository/koreader`
+## Runtime Boundaries
 
-Where current code layout requires edits to existing classes, keep those edits minimal and focused on wiring or compatibility boundaries.
+Current integration boundaries are:
 
-## Compatibility Layer Approach
+- KOReader controllers under `/api/koreader/**`
+- KOReader-oriented services for auth, progress, shelves, annotations, and the Web Reader Bridge
+- reading-session endpoints under `/api/v1/reading-sessions/**`
 
-The KOReader integration should behave like a companion adapter rather than a rewrite of core Grimmory reading systems.
+These boundaries let Grimmory serve the plugin without changing core reader behavior.
 
-Recommended approach:
+## Progress Separation
 
-1. Keep KOReader request parsing and response shaping in KOReader-specific controllers/DTOs.
-2. Route business logic through KOReader services that translate KOReader payloads into Grimmory-compatible operations.
-3. Use small adapter boundaries when existing Grimmory services must be consulted for users, books, or metadata.
-4. Keep Moon+ Reader-like sync behavior in a KOReader-specific service path rather than spreading logic through unrelated components.
+KOReader-native progress remains its own data path.
 
-## Progress Model Separation
+It preserves:
 
-KOReader-native reading progress must stay separate from Grimmory Web Reader progress.
+- raw KOReader `progress`
+- raw KOReader `location`
+- KOReader xpointer/page data
+- device/deviceId
+- sync timestamps
 
-Store and operate on KOReader fields such as:
+The optional Web Reader Bridge uses a separate path:
 
-- raw location/progress payload
-- percentage
-- current page and total pages when available
-- device and device ID
-- last sync timestamp
-- push/pull conflict metadata
+- native KOReader progress stays in KOReader-native storage
+- Web Reader progress stays in existing Web Reader progress storage
+- bridge endpoints translate between the two conservatively
 
-Do not reuse or overwrite Grimmory Web Reader progress fields such as:
+This separation prevents a failed or uncertain EPUB CFI conversion from corrupting native KOReader progress.
 
-- `epubProgress`
-- `epubProgressPercent`
-- `epubCfi`
-- web-reader last-position fields
+## Shelf Sync Safety Model
 
-## Prompt 8 - Web Reader Bridge
+Shelf Sync is intentionally membership-oriented:
 
-Prompt 8 adds an optional Web Reader Bridge, but it still follows the same
-separation rules:
+- list shelves
+- list books in shelf
+- download primary book file
+- remove shelf membership when explicitly requested
 
-- keep the bridge in a separate code path from native `/syncs/progress`
-- treat EPUB CFI conversion as best-effort only
-- never fake an exact EPUB CFI when conversion is unreliable
-- never overwrite KOReader-native source data with Web Reader fields
-- never let a failed conversion block native KOReader sync
-- preserve raw KOReader location/page/xpointer even when the bridge is used
+The backend must never use Shelf Sync to:
 
-Current bridge direction:
+- delete Grimmory library/server files
+- delete Grimmory book records
 
-- native KOReader progress remains stored in `koreader_progress`
-- Web Reader progress remains stored in the existing Web Reader progress tables
-- bridge endpoints translate between them conservatively and return explicit
-  `conversionStatus` / `conversionConfidence` metadata
+## Annotation Sync Safety Model
 
-Conflict handling stays user-driven:
+Annotation sync is KOReader-native and separate from Web Reader annotation storage.
 
-- KOReader newer: plugin may push to the bridge
-- Web Reader newer: plugin prompts before jumping
-- both changed: plugin offers `Use KOReader`, `Use Web Reader`, `Ignore`
-- uncertain conversion: keep both sides and avoid a silent overwrite
+Key rules:
 
-## Database Design Direction
+- dedupe by stable key
+- preserve raw KOReader xpointer/page data
+- skip older incoming revisions
+- do not write legacy Web Reader annotation fields
+- do not require EPUB CFI conversion
 
-Future persistence should prefer dedicated KOReader storage tables or isolated companion entities over stretching existing web-reader progress records.
+## Web Reader Bridge Model
 
-Suggested design direction:
+The Web Reader Bridge is optional and default-OFF in the plugin.
 
-- a KOReader user/auth linkage entity or table
-- a KOReader progress entity keyed by user, book, and device
-- optional KOReader session records for telemetry and offline batch upload
-- optional later entities for highlights, notes, bookmarks, ratings, and shelf sync state
+Bridge rules:
 
-This keeps KOReader semantics explicit and avoids hidden coupling with existing reader features.
+- bridge calls only the dedicated web-progress endpoints
+- native `/syncs/progress` remains authoritative for KOReader-native sync
+- EPUB CFI conversion is best-effort only
+- failed conversion returns explicit metadata instead of faking an exact position
+- conflict decisions remain user-driven in the plugin
 
-## Adapter and Service Boundaries
+## Release-Candidate Safety Invariants
 
-Suggested responsibilities:
+The Prompt 10 release candidate should preserve all of the following:
 
-- KOReader controller layer
-  - auth endpoint handling
-  - book hash lookup endpoints
-  - progress push/pull endpoints
-  - reading-session endpoints
-- KOReader service layer
-  - request validation
-  - conflict resolution rules
-  - throttling and sync heuristics
-  - translation to/from Grimmory book and user models
-- core Grimmory services
-  - reused only where existing book lookup, user lookup, or metadata reads already fit
-
-## Merge Safety
-
-To make upstream sync easier:
-
-- avoid broad refactors of existing controller/service code
-- avoid changing existing public APIs unless absolutely necessary
-- prefer new files over large edits to old ones
-- keep KOReader logic behind narrow seams
-- document any required touchpoints into existing code before implementation begins
-
-## Reference Materials
-
-- Use `docs/koreader-companion/reference/plugin-changes/` for inspection only.
-- Do not copy those files blindly into application code.
-- Extract behavior, contracts, and edge cases from the reference material, then implement them in Grimmory’s current structure.
+- OPF support remains intact
+- Shelf Sync stays membership-only
+- no delete path touches Grimmory library/server files
+- no delete path touches Grimmory book records
+- native KOReader sync works independently of the Web Reader Bridge
+- updater behavior lives in the separate plugin repository and does not modify backend storage rules

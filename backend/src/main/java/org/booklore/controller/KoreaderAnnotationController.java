@@ -29,7 +29,7 @@ import java.util.List;
 @RestController
 @AllArgsConstructor
 @RequestMapping("/api/koreader")
-@Tag(name = "KoReader", description = "Endpoints for KoReader device integration and progress sync")
+@Tag(name = "KOReader", description = "Endpoints for KOReader device integration and progress sync")
 public class KoreaderAnnotationController {
 
     private final KoreaderAnnotationService annotationService;

@@ -5,13 +5,13 @@
 - Repository: `0xstillb/grimmory`
 - Default/base branch: `opf-support-upstream`
 - Working branch for KOReader Companion planning and implementation: `feature/OPF-KOreader-plugin`
-- Current task scope: documentation/bootstrap only
+- Current task scope: GrimmLink release-readiness cleanup and documentation
 - OPF support exists on the base branch and must remain intact
 
 ## Reference Repositories
 
 - Upstream Grimmory: <https://github.com/grimmory-tools/grimmory>
-- BookLoreSync plugin reference: <https://github.com/WorldTeacher/BookLoreSync-plugin>
+- GrimmLink plugin reference: <https://github.com/0xstillb/grimmlink>
 - BookLore KOReader branch reference: <https://github.com/WorldTeacher/booklore/tree/koreader-plugin>
 
 ## High-Level Goal
