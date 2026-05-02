@@ -47,6 +47,7 @@ public class KoreaderService {
         ));
     }
 
+    @Transactional(readOnly = true)
     public ResponseEntity<Book> getBookByHash(String bookHash) {
         BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
         BookEntity book = findAccessibleBookByHash(bookHash, reader);
