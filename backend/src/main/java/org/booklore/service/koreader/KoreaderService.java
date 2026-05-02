@@ -9,7 +9,9 @@ import org.booklore.model.dto.progress.KoreaderProgress;
 import org.booklore.model.entity.BookEntity;
 import org.booklore.model.entity.BookFileEntity;
 import org.booklore.model.entity.BookLoreUserEntity;
+import org.booklore.model.entity.UserBookProgressEntity;
 import org.booklore.model.entity.koreader.KoreaderProgressEntity;
+import org.booklore.model.enums.ReadStatus;
 import org.booklore.repository.*;
 import org.booklore.repository.koreader.KoreaderProgressRepository;
 import org.booklore.service.hardcover.HardcoverSyncService;
@@ -27,6 +29,7 @@ import java.util.Objects;
 public class KoreaderService {
 
     private final KoreaderProgressRepository koreaderProgressRepository;
+    private final UserBookProgressRepository userBookProgressRepository;
     private final BookRepository bookRepository;
     private final BookMapper bookMapper;
     private final KoreaderSecurityContextService securityContextService;
@@ -111,12 +114,45 @@ public class KoreaderService {
 
         koreaderProgressRepository.save(entity);
 
+        updateUserBookProgress(reader, book, koProgress, normalizedPercentage, clientTimestamp);
+
         if (!Objects.equals(previousPercentage, normalizedPercentage) && normalizedPercentage != null) {
             hardcoverSyncService.syncProgressToHardcover(book.getId(), normalizedPercentage, reader.getId());
         }
 
         log.info("Saved GrimmLink progress for userId={} bookId={} hash={} percentage={}",
                 reader.getId(), book.getId(), bookHash, normalizedPercentage);
+    }
+
+    private void updateUserBookProgress(BookLoreUserEntity reader, BookEntity book,
+                                        KoreaderProgress koProgress, Float normalizedPercentage,
+                                        Instant timestamp) {
+        UserBookProgressEntity ubp = userBookProgressRepository
+                .findByUserIdAndBookId(reader.getId(), book.getId())
+                .orElseGet(() -> {
+                    UserBookProgressEntity e = new UserBookProgressEntity();
+                    e.setUser(reader);
+                    e.setBook(book);
+                    return e;
+                });
+
+        if (normalizedPercentage != null) {
+            ubp.setKoreaderProgressPercent(normalizedPercentage / 100f);
+        }
+        ubp.setKoreaderProgress(koProgress.getProgress());
+        ubp.setKoreaderDevice(koProgress.getDevice());
+        ubp.setKoreaderDeviceId(koProgress.getDevice_id());
+        ubp.setKoreaderLastSyncTime(timestamp);
+
+        if (ubp.getLastReadTime() == null || timestamp.isAfter(ubp.getLastReadTime())) {
+            ubp.setLastReadTime(timestamp);
+        }
+
+        if (ubp.getReadStatus() == null || ubp.getReadStatus() == ReadStatus.UNREAD) {
+            ubp.setReadStatus(ReadStatus.READING);
+        }
+
+        userBookProgressRepository.save(ubp);
     }
 
     private BookEntity findAccessibleBookByHash(String bookHash, BookLoreUserEntity reader) {
