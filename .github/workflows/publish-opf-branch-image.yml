@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/opf-support-upstream
+      - feature/OPF-KOreader-plugin
   workflow_dispatch:
 
 concurrency:
