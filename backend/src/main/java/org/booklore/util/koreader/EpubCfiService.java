@@ -51,7 +51,39 @@ public class EpubCfiService {
     public String convertXPointerToCfi(File epubFile, String xpointer) {
         int spineIndex = CfiConverter.extractSpineIndex(xpointer);
         CfiConverter converter = createConverter(epubFile, spineIndex);
-        return converter.xPointerToCfi(xpointer);
+        try {
+            return converter.xPointerToCfi(xpointer);
+        } catch (IllegalArgumentException e) {
+            // KOReader's CRE virtual DOM path may not match the actual EPUB HTML structure —
+            // e.g. /body/h3 when the real HTML has h3 nested inside a section/div wrapper.
+            // Appending [0] to the terminal element forces CfiConverter to use getElementsByTag
+            // (subtree search) instead of the strict direct-child walk that just failed.
+            String fallback = appendTagIndexFallback(xpointer);
+            if (fallback != null) {
+                log.debug("XPointer strict path failed ({}), retrying with tag-index fallback: {}", e.getMessage(), fallback);
+                return converter.xPointerToCfi(fallback);
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Appends [0] to the terminal element of an XPointer path so CfiConverter uses
+     * getElementsByTag (subtree) instead of walkHierarchical (strict child walk).
+     * Returns null if the path already has an explicit index or cannot be modified.
+     */
+    private String appendTagIndexFallback(String xpointer) {
+        int textIdx = xpointer.indexOf("/text()");
+        String pathPart = textIdx >= 0 ? xpointer.substring(0, textIdx) : xpointer;
+        String suffix   = textIdx >= 0 ? xpointer.substring(textIdx) : "";
+
+        int lastSlash = pathPart.lastIndexOf('/');
+        if (lastSlash < 0) return null;
+
+        String lastSegment = pathPart.substring(lastSlash + 1);
+        if (lastSegment.isEmpty() || lastSegment.contains("[")) return null;
+
+        return pathPart.substring(0, lastSlash + 1) + lastSegment + "[0]" + suffix;
     }
 
     public String convertXPointerToCfi(Path epubPath, String xpointer) {
@@ -67,7 +99,19 @@ public class EpubCfiService {
         }
 
         CfiConverter converter = createConverter(epubFile, startSpineIndex);
-        return converter.xPointerToCfi(startXPointer, endXPointer);
+        try {
+            return converter.xPointerToCfi(startXPointer, endXPointer);
+        } catch (IllegalArgumentException e) {
+            String fallbackStart = appendTagIndexFallback(startXPointer);
+            String fallbackEnd   = appendTagIndexFallback(endXPointer);
+            if (fallbackStart != null || fallbackEnd != null) {
+                log.debug("XPointer range strict path failed, retrying with tag-index fallback");
+                return converter.xPointerToCfi(
+                        fallbackStart != null ? fallbackStart : startXPointer,
+                        fallbackEnd   != null ? fallbackEnd   : endXPointer);
+            }
+            throw e;
+        }
     }
 
     public String convertXPointerRangeToCfi(Path epubPath, String startXPointer, String endXPointer) {
