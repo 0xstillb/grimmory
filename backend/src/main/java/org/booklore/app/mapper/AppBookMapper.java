@@ -177,13 +177,21 @@ public interface AppBookMapper {
 
     @Named("mapEpubProgress")
     default AppBookDetail.EpubProgress mapEpubProgress(UserBookProgressEntity progress) {
-        if (progress == null || progress.getEpubProgress() == null) {
+        if (progress == null) {
+            return null;
+        }
+        Float percentage = progress.getEpubProgressPercent() != null
+                ? progress.getEpubProgressPercent()
+                : (progress.getKoreaderProgressPercent() != null
+                        ? progress.getKoreaderProgressPercent() * 100f
+                        : null);
+        if (progress.getEpubProgress() == null && percentage == null) {
             return null;
         }
         return AppBookDetail.EpubProgress.builder()
                 .cfi(progress.getEpubProgress())
                 .href(progress.getEpubProgressHref())
-                .percentage(progress.getEpubProgressPercent())
+                .percentage(percentage)
                 .updatedAt(progress.getLastReadTime())
                 .build();
     }

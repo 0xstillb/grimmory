@@ -11,6 +11,7 @@ import org.booklore.model.entity.BookFileEntity;
 import org.booklore.model.entity.BookLoreUserEntity;
 import org.booklore.model.entity.UserBookProgressEntity;
 import org.booklore.model.entity.koreader.KoreaderProgressEntity;
+import org.booklore.model.enums.BookFileType;
 import org.booklore.model.enums.ReadStatus;
 import org.booklore.repository.*;
 import org.booklore.repository.koreader.KoreaderProgressRepository;
@@ -144,6 +145,16 @@ public class KoreaderService {
         ubp.setKoreaderDevice(koProgress.getDevice());
         ubp.setKoreaderDeviceId(koProgress.getDevice_id());
         ubp.setKoreaderLastSyncTime(timestamp);
+
+        BookFileEntity primaryFile = book.getPrimaryBookFile();
+        if (primaryFile != null && koProgress.getCurrentPage() != null && koProgress.getCurrentPage() > 0) {
+            if (primaryFile.getBookType() == BookFileType.PDF) {
+                ubp.setPdfProgress(koProgress.getCurrentPage());
+                if (normalizedPercentage != null) {
+                    ubp.setPdfProgressPercent(normalizedPercentage / 100f);
+                }
+            }
+        }
 
         if (ubp.getLastReadTime() == null || timestamp.isAfter(ubp.getLastReadTime())) {
             ubp.setLastReadTime(timestamp);
