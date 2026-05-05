@@ -20,6 +20,7 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
         List<BookLoreUserEntity> users = em.createQuery(
                         "SELECT DISTINCT u FROM BookLoreUserEntity u " +
                                 "LEFT JOIN FETCH u.settings " +
+                                "LEFT JOIN FETCH u.koreaderUser " +
                                 "LEFT JOIN FETCH u.permissions " +
                                 "WHERE u.id = :id",
                         BookLoreUserEntity.class)

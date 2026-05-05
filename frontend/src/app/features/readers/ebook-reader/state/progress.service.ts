@@ -102,6 +102,16 @@ export class ReaderProgressService {
     const href = detail?.pageItem?.href ?? detail?.tocItem?.href ?? null;
     const percentage = typeof detail?.fraction === 'number' ? detail.fraction * 100 : null;
 
+    console.info('[Web Reader][progress] relocate event', {
+      bookId: this.bookId,
+      bookFileId: this.bookFileId,
+      cfi,
+      href,
+      fraction: detail?.fraction ?? 0,
+      section: detail?.section,
+      time: detail?.time,
+    });
+
     if (!this.hasStartedSession && cfi && percentage !== null) {
       this.hasStartedSession = true;
       this.readingSessionService.startSession(this.bookId, this.bookType, cfi, percentage);
@@ -149,6 +159,17 @@ export class ReaderProgressService {
       this._currentCfi = cfi;
       this.bookmarkService.updateCurrentPosition(cfi, chapterLabel);
     }
+
+    console.info('[Web Reader][progress] applied state', {
+      bookId: this.bookId,
+      bookFileId: this.bookFileId,
+      cfi: this._currentCfi,
+      href,
+      chapterName: this._currentChapterName,
+      chapterHref: this._currentChapterHref,
+      fraction: detail?.fraction ?? 0,
+      pageInfo: this._currentPageInfo,
+    });
 
     this.progressSubject.next({
       cfi: this._currentCfi,

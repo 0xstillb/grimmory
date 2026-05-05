@@ -12,6 +12,12 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class KoreaderWebProgressUpdateRequest {
+    @JsonAlias({"book_file_id"})
+    private Long bookFileId;
+    @JsonAlias({"book_hash"})
+    private String bookHash;
+    @JsonAlias({"file_format"})
+    private String fileFormat;
     private Float percentage;
     private Integer currentPage;
     private Integer totalPages;

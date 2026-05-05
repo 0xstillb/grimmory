@@ -122,6 +122,15 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
   private pdfFetchAbortController?: AbortController;
   private cachedPdfBuffer: ArrayBuffer | null = null;
   private suppressProgressSave = false;
+  private pendingPdfRestore: {
+    requestedPage: number;
+    targetPage: number | null;
+    totalPages: number | null;
+    source: 'book' | 'document';
+    applied: boolean;
+    lastAppliedTargetPage: number | null;
+  } | null = null;
+  private pendingPdfRestoreTimeout?: ReturnType<typeof setTimeout>;
 
   // Book mode state
   private bookViewerInitialized = false;
@@ -387,14 +396,29 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
           spreadVal = rawSpread === 'off' ? 'none' : rawSpread as 'none' | 'even' | 'odd';
           this.isDarkTheme.set(pdfPrefs.pdfSettings?.isDarkTheme ?? true);
         }
-        this.spread = spreadVal;
-        this.spreadMode.set(spreadVal);
-        this.canPrint = myself.permissions.canDownload || myself.permissions.admin;
-        this.page.set(pdfMeta.pdfProgress?.page || 1);
-        this.zoom.set(this.normalizeZoom(zoomVal));
-        this.bookData = bookData;
-        this.isInitialScrollDone.set(false);
-        this.isLoading.set(false);
+          this.spread = spreadVal;
+          this.spreadMode.set(spreadVal);
+          this.canPrint = myself.permissions.canDownload || myself.permissions.admin;
+          this.page.set(pdfMeta.pdfProgress?.page || 1);
+          this.zoom.set(this.normalizeZoom(zoomVal));
+          this.pendingPdfRestore = {
+            requestedPage: this.page(),
+            targetPage: null,
+            totalPages: null,
+            source: 'book',
+            applied: false,
+            lastAppliedTargetPage: null,
+          };
+          this.suppressProgressSave = true;
+          console.info('[PDF Reader][restore] requested', {
+            bookId: this.bookId,
+            bookFileId: this.bookFileId,
+            pdfProgress: pdfMeta.pdfProgress,
+            restoreStrategy: pdfMeta.pdfProgress?.page ? 'page' : 'start',
+          });
+          this.bookData = bookData;
+          this.isInitialScrollDone.set(false);
+          this.isLoading.set(false);
 
         // Schedule viewer initialization after the template renders the container
         afterNextRender(() => {
@@ -481,8 +505,8 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
         debounceTime(100)
       ).subscribe(ev => {
         this.ngZone.run(() => {
-          this.onPageChange(ev.pageNumber);
           this.totalPages.set(ev.totalPages);
+          this.onPageChange(ev.pageNumber);
         });
       });
 
@@ -538,6 +562,8 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
           this.embedPdfBook.setSpreadMode(this.spread);
           this.spreadMode.set(this.spread);
         }
+
+        this.applyInitialPdfRestore('book');
       });
 
       // Use onLayoutReady for initial page scroll (fires when document layout is calculated)
@@ -545,29 +571,7 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
         takeUntilDestroyed(this.destroyRef),
         take(1)
       ).subscribe(() => {
-        const currentPage = this.page();
-        if (currentPage > 1) {
-          this.embedPdfBook.scrollToPage(currentPage, 'instant');
-
-          // Wait for the scroll to be processed before revealing the viewer.
-          // EmbedPDF processes scrollToPage asynchronously, so revealing
-          // immediately would flash page 1 before jumping to the target.
-          const scrollSub = this.embedPdfBook.pageChange$.pipe(
-            filter(ev => ev.pageNumber >= currentPage - 1),
-            take(1)
-          ).subscribe(() => {
-            this.ngZone.run(() => this.isInitialScrollDone.set(true));
-          });
-          // Fallback in case pageChange$ doesn't fire (e.g. single-page PDF)
-          setTimeout(() => {
-            if (!this.isInitialScrollDone()) {
-              scrollSub.unsubscribe();
-              this.ngZone.run(() => this.isInitialScrollDone.set(true));
-            }
-          }, 800);
-        } else {
-          this.isInitialScrollDone.set(true);
-        }
+        this.applyInitialPdfRestore('book');
 
         // Load outline, bookmarks, and annotations after layout is ready and settled
         this.loadOutline();
@@ -608,6 +612,10 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
   }
 
   private destroyBookViewer(revoke = true): void {
+    if (this.pendingPdfRestoreTimeout) {
+      clearTimeout(this.pendingPdfRestoreTimeout);
+      this.pendingPdfRestoreTimeout = undefined;
+    }
     this.embedPdfBook.destroy();
     this.bookViewerInitialized = false;
     if (revoke) {
@@ -871,6 +879,14 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
 
     if (mode === 'document') {
       this.suppressProgressSave = true;
+      this.pendingPdfRestore = {
+        requestedPage: this.page(),
+        targetPage: null,
+        totalPages: null,
+        source: 'document',
+        applied: false,
+        lastAppliedTargetPage: null,
+      };
       // Ensure annotations are captured before destroying the book viewer
       await this.persistAnnotations();
       this.destroyBookViewer(false); // Do not revoke blob URL
@@ -884,6 +900,15 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
       if (this.embedPdfIframe) {
         this.saveEmbedPdfDocument().finally(() => this.destroyDocViewerIframe());
       }
+      this.pendingPdfRestore = {
+        requestedPage: this.page(),
+        targetPage: null,
+        totalPages: null,
+        source: 'book',
+        applied: false,
+        lastAppliedTargetPage: null,
+      };
+      this.suppressProgressSave = true;
       this.viewerMode.set(mode);
       this.isInitialScrollDone.set(false);
       this.initTimeout = setTimeout(() => {
@@ -981,14 +1006,13 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
         }
         break;
       case 'documentOpened':
-        // Scroll to the page the user was on in book mode and re-enable progress saving
-        if (this.embedPdfIframe?.contentWindow && this.page() > 1) {
-          this.embedPdfIframe.contentWindow.postMessage(
-            { type: 'scrollToPage', pageNumber: this.page() },
-            location.origin
-          );
-        }
-        setTimeout(() => { this.suppressProgressSave = false; }, 500);
+        console.info('[PDF Reader][restore] document opened', {
+          bookId: this.bookId,
+          bookFileId: this.bookFileId,
+          requestedPage: this.pendingPdfRestore?.requestedPage ?? this.page(),
+          totalPages: this.totalPages(),
+        });
+        this.applyInitialPdfRestore('document');
         break;
       case 'documentError':
         console.error('[EmbedPDF] Document error:', msg.error);
@@ -1003,8 +1027,8 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
         this.embedPdfSaveResolve = undefined;
         break;
       case 'pageChange':
-        this.onPageChange(msg.pageNumber);
         this.totalPages.set(msg.totalPages);
+        this.onPageChange(msg.pageNumber);
         break;
     }
   }
@@ -1057,6 +1081,10 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
   }
 
   private async destroyDocViewerIframe(): Promise<void> {
+    if (this.pendingPdfRestoreTimeout) {
+      clearTimeout(this.pendingPdfRestoreTimeout);
+      this.pendingPdfRestoreTimeout = undefined;
+    }
     if (this.embedPdfMessageHandler) {
       window.removeEventListener('message', this.embedPdfMessageHandler);
       this.embedPdfMessageHandler = undefined;
@@ -1081,13 +1109,26 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
   // --- Common viewer methods ---
 
   onPageChange(page: number | undefined): void {
-    if (page == null || page === this.page()) {
+    if (page == null) {
+      return;
+    }
+    if (this.pendingPdfRestore?.targetPage === page) {
+      this.completeInitialPdfRestore(page, true);
+    }
+    if (page === this.page()) {
       return;
     }
     this.page.set(page);
     this.updateProgress();
     const total = this.totalPages();
     const percentage = total > 0 ? Math.round((page / total) * 1000) / 10 : 0;
+    console.info('[PDF Reader][progress] page change', {
+      bookId: this.bookId,
+      bookFileId: this.bookFileId,
+      page,
+      totalPages: total,
+      percentage,
+    });
     this.readingSessionService.updateProgress(page.toString(), percentage);
   }
 
@@ -1117,6 +1158,92 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
     this.bookService.updateViewerSetting(bookSetting, this.bookId).subscribe();
   }
 
+  private clampPdfPage(page: number, totalPages: number): number {
+    const safeTotalPages = Math.max(1, Math.floor(totalPages));
+    const safePage = Math.max(1, Math.round(page || 1));
+    return Math.min(safePage, safeTotalPages);
+  }
+
+  private applyInitialPdfRestore(source: 'book' | 'document'): void {
+    const pending = this.pendingPdfRestore;
+    const totalPages = this.totalPages();
+    if (!pending || totalPages <= 0) {
+      return;
+    }
+
+    pending.source = source;
+    const targetPage = this.clampPdfPage(pending.requestedPage, totalPages);
+    pending.targetPage = targetPage;
+    pending.totalPages = totalPages;
+
+    console.info('[PDF Reader][restore] target resolved', {
+      bookId: this.bookId,
+      bookFileId: this.bookFileId,
+      source,
+      requestedPage: pending.requestedPage,
+      targetPage,
+      totalPages,
+      currentPage: this.page(),
+    });
+
+    if (pending.lastAppliedTargetPage === targetPage) {
+      return;
+    }
+
+    if (this.page() === targetPage) {
+      this.completeInitialPdfRestore(targetPage, true);
+      return;
+    }
+    pending.applied = true;
+    pending.lastAppliedTargetPage = targetPage;
+
+    if (this.pendingPdfRestoreTimeout) {
+      clearTimeout(this.pendingPdfRestoreTimeout);
+    }
+
+    if (source === 'book') {
+      this.embedPdfBook.scrollToPage(targetPage, 'instant');
+    } else if (this.embedPdfIframe?.contentWindow) {
+      this.embedPdfIframe.contentWindow.postMessage(
+        { type: 'scrollToPage', pageNumber: targetPage },
+        location.origin
+      );
+    }
+
+    this.pendingPdfRestoreTimeout = setTimeout(() => {
+      if (this.pendingPdfRestore?.targetPage === targetPage) {
+        this.completeInitialPdfRestore(this.page(), false);
+      }
+    }, 800);
+  }
+
+  private completeInitialPdfRestore(actualPage: number, verified: boolean): void {
+    const pending = this.pendingPdfRestore;
+    if (!pending) {
+      return;
+    }
+
+    if (this.pendingPdfRestoreTimeout) {
+      clearTimeout(this.pendingPdfRestoreTimeout);
+      this.pendingPdfRestoreTimeout = undefined;
+    }
+
+    console.info('[PDF Reader][restore] landed', {
+      bookId: this.bookId,
+      bookFileId: this.bookFileId,
+      source: pending.source,
+      requestedPage: pending.requestedPage,
+      targetPage: pending.targetPage,
+      actualPage,
+      totalPages: pending.totalPages ?? this.totalPages(),
+      verified,
+    });
+
+    this.pendingPdfRestore = null;
+    this.isInitialScrollDone.set(true);
+    this.suppressProgressSave = false;
+  }
+
   updateProgress(): void {
     if (this.suppressProgressSave) return;
     const currentPage = this.page();
@@ -1127,6 +1254,7 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     if (this.initTimeout) clearTimeout(this.initTimeout);
+    if (this.pendingPdfRestoreTimeout) clearTimeout(this.pendingPdfRestoreTimeout);
     if (this.pdfFetchAbortController) this.pdfFetchAbortController.abort();
     this.wakeLockService.disable();
     if (this.chromeAutoHideTimer) clearTimeout(this.chromeAutoHideTimer);
@@ -1487,6 +1615,15 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
         progressPercent: percentage
       };
     }
+    console.info('[PDF Reader][progress] save', {
+      bookId: this.bookId,
+      bookFileId: this.bookFileId,
+      currentPage,
+      totalPages: total,
+      percentage,
+      pdfProgress: body['pdfProgress'],
+      fileProgress: body['fileProgress'] ?? null,
+    });
     const url = `${API_CONFIG.BASE_URL}/api/v1/books/progress`;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const progressToken = this.authService.getInternalAccessToken();

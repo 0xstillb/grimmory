@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
+import java.time.Instant;
+
 @Data
 @Builder
 @ToString
@@ -13,10 +15,19 @@ import lombok.*;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class KoreaderProgress {
     private Long timestamp;
+    private Instant updatedAt;
     private String document;
     private String bookHash;
     private Long bookId;
+    private Long bookFileId;
+    private String currentHash;
+    private String initialHash;
+    private String source;
+    private Long progressVersion;
     private Float percentage;
+    private Integer pdfCurrentPage;
+    private Integer pdfTotalPages;
+    private Float pdfProgressPercent;
     @Size(max = 2000)
     private String progress;
     @Size(max = 2000)

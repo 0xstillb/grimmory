@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -38,13 +39,14 @@ public class KoreaderService {
 
     public ResponseEntity<Map<String, Object>> authorizeUser() {
         KoreaderSecurityContextService.AuthenticatedReader reader = securityContextService.requireCurrentReader(false);
-        log.info("User '{}' authorized for GrimmLink", reader.username());
+        log.info("GrimmLink progress sync source=koreader direction=auth apiStatus=ok bookId=null bookFileId=null bookHash=null fileFormat=null currentPage=null totalPages=null percentage=null device=null deviceId=null userId={}",
+                reader.userId());
         return ResponseEntity.ok(Map.of(
                 "status", "ok",
                 "username", reader.username(),
                 "userId", reader.userId(),
                 "syncEnabled", reader.syncEnabled(),
-                "syncWithGrimmoryReader", false
+                "syncWithGrimmoryReader", reader.syncWithBookloreReader()
         ));
     }
 
@@ -53,23 +55,38 @@ public class KoreaderService {
         BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
         BookEntity book = findAccessibleBookByHash(bookHash, reader);
         Book mappedBook = bookMapper.toBook(book);
+        BookFileEntity primaryFile = book.getPrimaryBookFile();
+        log.info("GrimmLink progress sync source=koreader direction=pull apiStatus=ok bookId={} bookFileId={} bookHash={} fileFormat={} currentPage=null totalPages=null percentage=null progress=null location=null device=null deviceId=null",
+                book.getId(),
+                primaryFile != null ? primaryFile.getId() : null,
+                primaryFile != null && primaryFile.getCurrentHash() != null ? primaryFile.getCurrentHash() : bookHash,
+                primaryFile != null && primaryFile.getBookType() != null ? primaryFile.getBookType().name() : null);
         return ResponseEntity.ok(mappedBook);
     }
 
     public KoreaderProgress getProgress(String bookHash) {
         BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
         BookEntity book = findAccessibleBookByHash(bookHash, reader);
-
-        return koreaderProgressRepository.findByUserIdAndBookId(reader.getId(), book.getId())
+        BookFileEntity bookFile = resolveBookFileForHash(book, bookHash);
+        KoreaderProgress progress = findProgressRecord(reader.getId(), book.getId(), bookFile != null ? bookFile.getId() : null)
                 .map(entity -> KoreaderProgress.builder()
                         .timestamp(entity.getTimestamp() != null ? entity.getTimestamp().getEpochSecond() : null)
+                        .updatedAt(entity.getUpdatedAt())
                         .document(entity.getDocument())
                         .bookHash(entity.getBookHash())
                         .bookId(book.getId())
+                        .bookFileId(entity.getBookFile() != null ? entity.getBookFile().getId() : (bookFile != null ? bookFile.getId() : null))
+                        .currentHash(entity.getCurrentHash())
+                        .initialHash(entity.getInitialHash())
+                        .source(entity.getSource())
+                        .progressVersion(entity.getProgressVersion())
                         .fileFormat(entity.getFileFormat())
                         .progress(entity.getProgress())
                         .location(entity.getLocation())
                         .percentage(entity.getPercentage())
+                        .pdfCurrentPage(entity.getCurrentPage())
+                        .pdfTotalPages(entity.getTotalPages())
+                        .pdfProgressPercent(entity.getPercentage())
                         .currentPage(entity.getCurrentPage())
                         .totalPages(entity.getTotalPages())
                         .device(entity.getDevice())
@@ -79,8 +96,25 @@ public class KoreaderService {
                         .document(bookHash)
                         .bookHash(bookHash)
                         .bookId(book.getId())
-                        .fileFormat(resolveBookType(book))
+                        .bookFileId(bookFile != null ? bookFile.getId() : null)
+                        .currentHash(bookFile != null ? bookFile.getCurrentHash() : null)
+                        .initialHash(bookFile != null ? bookFile.getInitialHash() : null)
+                        .fileFormat(resolveBookType(bookFile))
                         .build());
+
+        log.info("GrimmLink progress sync source=koreader direction=pull apiStatus=ok bookId={} bookFileId={} bookHash={} fileFormat={} currentPage={} totalPages={} percentage={} progress={} location={} device={} deviceId={}",
+                book.getId(),
+                progress.getBookFileId(),
+                progress.getBookHash(),
+                progress.getFileFormat(),
+                progress.getCurrentPage(),
+                progress.getTotalPages(),
+                progress.getPercentage(),
+                progress.getProgress(),
+                progress.getLocation(),
+                progress.getDevice(),
+                progress.getDevice_id());
+        return progress;
     }
 
     @Transactional
@@ -91,20 +125,27 @@ public class KoreaderService {
 
         BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
         BookEntity book = findAccessibleBookByHash(bookHash, reader);
+        BookFileEntity bookFile = resolveBookFileForHash(book, bookHash);
 
-        KoreaderProgressEntity entity = koreaderProgressRepository.findByUserIdAndBookId(reader.getId(), book.getId())
+        KoreaderProgressEntity entity = findProgressEntity(reader.getId(), book.getId(), bookFile != null ? bookFile.getId() : null)
                 .orElseGet(KoreaderProgressEntity::new);
 
         Float previousPercentage = entity.getPercentage();
         Float normalizedPercentage = normalizePercentage(koProgress.getPercentage());
         Instant clientTimestamp = normalizeTimestamp(koProgress.getTimestamp());
         validatePageData(koProgress);
+        Long nextProgressVersion = entity.getProgressVersion() == null ? 1L : entity.getProgressVersion() + 1L;
 
         entity.setUser(reader);
         entity.setBook(book);
+        entity.setBookFile(bookFile);
         entity.setBookHash(bookHash.trim());
         entity.setDocument(resolveDocument(bookHash, koProgress));
-        entity.setFileFormat(resolveFileFormat(book, koProgress));
+        entity.setCurrentHash(bookFile != null ? bookFile.getCurrentHash() : null);
+        entity.setInitialHash(bookFile != null ? bookFile.getInitialHash() : null);
+        entity.setFileFormat(resolveFileFormat(bookFile, koProgress));
+        entity.setSource(resolveSource(koProgress));
+        entity.setProgressVersion(nextProgressVersion);
         entity.setProgress(koProgress.getProgress());
         entity.setLocation(resolveLocation(koProgress));
         entity.setPercentage(normalizedPercentage);
@@ -116,17 +157,28 @@ public class KoreaderService {
 
         koreaderProgressRepository.save(entity);
 
-        updateUserBookProgress(reader, book, koProgress, normalizedPercentage, clientTimestamp);
+        updateUserBookProgress(reader, book, bookFile, koProgress, normalizedPercentage, clientTimestamp);
 
         if (!Objects.equals(previousPercentage, normalizedPercentage) && normalizedPercentage != null) {
             hardcoverSyncService.syncProgressToHardcover(book.getId(), normalizedPercentage, reader.getId());
         }
 
-        log.info("Saved GrimmLink progress for userId={} bookId={} hash={} percentage={}",
-                reader.getId(), book.getId(), bookHash, normalizedPercentage);
+        log.info("GrimmLink progress sync source=koreader direction=push apiStatus=ok bookId={} bookFileId={} bookHash={} fileFormat={} currentPage={} totalPages={} percentage={} progress={} location={} device={} deviceId={} userId={}",
+                book.getId(),
+                bookFile != null ? bookFile.getId() : null,
+                bookFile != null && bookFile.getCurrentHash() != null ? bookFile.getCurrentHash() : bookHash,
+                resolveFileFormat(bookFile, koProgress),
+                koProgress.getCurrentPage(),
+                koProgress.getTotalPages(),
+                normalizedPercentage,
+                koProgress.getProgress(),
+                resolveLocation(koProgress),
+                koProgress.getDevice(),
+                koProgress.getDevice_id(),
+                reader.getId());
     }
 
-    private void updateUserBookProgress(BookLoreUserEntity reader, BookEntity book,
+    private void updateUserBookProgress(BookLoreUserEntity reader, BookEntity book, BookFileEntity bookFile,
                                         KoreaderProgress koProgress, Float normalizedPercentage,
                                         Instant timestamp) {
         UserBookProgressEntity ubp = userBookProgressRepository
@@ -146,9 +198,9 @@ public class KoreaderService {
         ubp.setKoreaderDeviceId(koProgress.getDevice_id());
         ubp.setKoreaderLastSyncTime(timestamp);
 
-        BookFileEntity primaryFile = book.getPrimaryBookFile();
-        if (primaryFile != null && koProgress.getCurrentPage() != null && koProgress.getCurrentPage() > 0) {
-            if (primaryFile.getBookType() == BookFileType.PDF) {
+        BookFileEntity progressBookFile = bookFile;
+        if (progressBookFile != null && koProgress.getCurrentPage() != null && koProgress.getCurrentPage() > 0) {
+            if (progressBookFile.getBookType() == BookFileType.PDF) {
                 ubp.setPdfProgress(koProgress.getCurrentPage());
                 if (normalizedPercentage != null) {
                     ubp.setPdfProgressPercent(normalizedPercentage / 100f);
@@ -243,17 +295,50 @@ public class KoreaderService {
         return progress.getProgress();
     }
 
-    private String resolveFileFormat(BookEntity book, KoreaderProgress progress) {
+    private String resolveFileFormat(BookFileEntity bookFile, KoreaderProgress progress) {
         if (progress.getFileFormat() != null && !progress.getFileFormat().isBlank()) {
             return progress.getFileFormat().trim().toUpperCase();
         }
-        return resolveBookType(book);
+        return resolveBookType(bookFile);
     }
 
-    private String resolveBookType(BookEntity book) {
-        BookFileEntity primaryBookFile = book.getPrimaryBookFile();
-        return primaryBookFile != null && primaryBookFile.getBookType() != null
-                ? primaryBookFile.getBookType().name()
+    private String resolveBookType(BookFileEntity bookFile) {
+        return bookFile != null && bookFile.getBookType() != null
+                ? bookFile.getBookType().name()
                 : null;
+    }
+
+    private Optional<KoreaderProgressEntity> findProgressEntity(Long userId, Long bookId, Long bookFileId) {
+        if (bookFileId != null) {
+            Optional<KoreaderProgressEntity> byBookFile = koreaderProgressRepository.findByUserIdAndBookFileId(userId, bookFileId);
+            if (byBookFile != null && byBookFile.isPresent()) {
+                return byBookFile;
+            }
+        }
+        Optional<KoreaderProgressEntity> byBookId = koreaderProgressRepository.findByUserIdAndBookId(userId, bookId);
+        return byBookId != null ? byBookId : Optional.empty();
+    }
+
+    private Optional<KoreaderProgressEntity> findProgressRecord(Long userId, Long bookId, Long bookFileId) {
+        return findProgressEntity(userId, bookId, bookFileId);
+    }
+
+    private BookFileEntity resolveBookFileForHash(BookEntity book, String bookHash) {
+        String normalizedHash = normalizeHash(bookHash);
+        if (book.getBookFiles() == null || book.getBookFiles().isEmpty()) {
+            return null;
+        }
+        return book.getBookFiles().stream()
+                .filter(Objects::nonNull)
+                .filter(file -> normalizedHash.equals(file.getCurrentHash()) || normalizedHash.equals(file.getInitialHash()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String resolveSource(KoreaderProgress progress) {
+        if (progress.getSource() != null && !progress.getSource().isBlank()) {
+            return progress.getSource().trim().toUpperCase();
+        }
+        return "KOREADER";
     }
 }

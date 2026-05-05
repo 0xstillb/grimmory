@@ -10,4 +10,6 @@ import java.util.Optional;
 public interface KoreaderProgressRepository extends JpaRepository<KoreaderProgressEntity, Long> {
 
     Optional<KoreaderProgressEntity> findByUserIdAndBookId(Long userId, Long bookId);
+
+    Optional<KoreaderProgressEntity> findByUserIdAndBookFileId(Long userId, Long bookFileId);
 }

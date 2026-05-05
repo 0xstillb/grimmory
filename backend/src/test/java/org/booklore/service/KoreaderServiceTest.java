@@ -16,6 +16,7 @@ import org.booklore.model.entity.UserPermissionsEntity;
 import org.booklore.model.entity.koreader.KoreaderProgressEntity;
 import org.booklore.model.enums.BookFileType;
 import org.booklore.repository.BookRepository;
+import org.booklore.repository.UserBookProgressRepository;
 import org.booklore.repository.koreader.KoreaderProgressRepository;
 import org.booklore.service.hardcover.HardcoverSyncService;
 import org.booklore.service.koreader.KoreaderService;
@@ -44,6 +45,8 @@ class KoreaderServiceTest {
     KoreaderSecurityContextService securityContextService;
     @Mock
     HardcoverSyncService hardcoverSyncService;
+    @Mock
+    UserBookProgressRepository userBookProgressRepository;
 
     @InjectMocks
     KoreaderService service;
@@ -76,17 +79,19 @@ class KoreaderServiceTest {
                 .fileName("test.epub")
                 .fileSubPath("")
                 .build());
+        lenient().when(userBookProgressRepository.findByUserIdAndBookId(42L, 99L)).thenReturn(Optional.empty());
     }
 
     @Test
     void authorizeUser_success() {
         when(securityContextService.requireCurrentReader(false))
-                .thenReturn(new KoreaderSecurityContextService.AuthenticatedReader(42L, "u", true, true, false));
+                .thenReturn(new KoreaderSecurityContextService.AuthenticatedReader(42L, "u", true, true, true));
 
         ResponseEntity<Map<String, Object>> resp = service.authorizeUser();
         assertEquals(200, resp.getStatusCode().value());
         assertEquals("u", resp.getBody().get("username"));
         assertEquals("ok", resp.getBody().get("status"));
+        assertEquals(true, resp.getBody().get("syncWithGrimmoryReader"));
     }
 
     @Test
@@ -137,6 +142,50 @@ class KoreaderServiceTest {
         assertEquals("loc-1", out.getLocation());
         assertEquals(55.5F, out.getPercentage());
         assertEquals(1234L, out.getTimestamp());
+    }
+
+    @Test
+    void saveProgress_linksMatchingBookFileWhenHashMatchesAlternateFile() {
+        BookFileEntity altFile = BookFileEntity.builder()
+                .id(777L)
+                .book(book)
+                .isBookFormat(true)
+                .bookType(BookFileType.EPUB)
+                .currentHash("alt-current")
+                .initialHash("alt-initial")
+                .fileName("alt.epub")
+                .fileSubPath("")
+                .build();
+        book.getBookFiles().add(altFile);
+
+        when(securityContextService.requireCurrentReaderEntity(true)).thenReturn(reader);
+        when(bookRepo.findByCurrentOrInitialHash("alt-current")).thenReturn(Optional.of(book));
+        when(progressRepo.findByUserIdAndBookFileId(42L, 777L)).thenReturn(Optional.empty());
+        when(progressRepo.findByUserIdAndBookId(42L, 99L)).thenReturn(Optional.empty());
+
+        var dto = KoreaderProgress.builder()
+                .document("alt-current")
+                .bookHash("alt-current")
+                .progress("xp://alt")
+                .location("loc-alt")
+                .percentage(12.5F)
+                .device("KOReader")
+                .device_id("device-2")
+                .currentPage(4)
+                .totalPages(200)
+                .build();
+
+        service.saveProgress("alt-current", dto);
+
+        ArgumentCaptor<KoreaderProgressEntity> cap = ArgumentCaptor.forClass(KoreaderProgressEntity.class);
+        verify(progressRepo).save(cap.capture());
+        KoreaderProgressEntity saved = cap.getValue();
+        assertEquals(777L, saved.getBookFile().getId());
+        assertEquals("alt-current", saved.getCurrentHash());
+        assertEquals("alt-initial", saved.getInitialHash());
+        assertEquals("EPUB", saved.getFileFormat());
+        assertEquals("KOREADER", saved.getSource());
+        assertEquals(1L, saved.getProgressVersion());
     }
 
     @Test

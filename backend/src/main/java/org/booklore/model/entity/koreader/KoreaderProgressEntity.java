@@ -3,6 +3,7 @@ package org.booklore.model.entity.koreader;
 import jakarta.persistence.*;
 import lombok.*;
 import org.booklore.model.entity.BookEntity;
+import org.booklore.model.entity.BookFileEntity;
 import org.booklore.model.entity.BookLoreUserEntity;
 
 import java.time.Instant;
@@ -16,11 +17,12 @@ import java.time.Instant;
 @Table(
         name = "koreader_progress",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_koreader_progress_user_book", columnNames = {"user_id", "book_id"})
+                @UniqueConstraint(name = "uk_koreader_progress_user_book_file", columnNames = {"user_id", "book_file_id"})
         },
         indexes = {
                 @Index(name = "idx_koreader_progress_user_hash", columnList = "user_id, book_hash"),
                 @Index(name = "idx_koreader_progress_book", columnList = "book_id"),
+                @Index(name = "idx_koreader_progress_book_file", columnList = "book_file_id"),
                 @Index(name = "idx_koreader_progress_updated_at", columnList = "updated_at")
         }
 )
@@ -38,14 +40,30 @@ public class KoreaderProgressEntity {
     @JoinColumn(name = "book_id", nullable = false)
     private BookEntity book;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "book_file_id")
+    private BookFileEntity bookFile;
+
     @Column(name = "book_hash", nullable = false, length = 128)
     private String bookHash;
+
+    @Column(name = "current_hash", length = 128)
+    private String currentHash;
+
+    @Column(name = "initial_hash", length = 128)
+    private String initialHash;
 
     @Column(name = "document", length = 512)
     private String document;
 
     @Column(name = "file_format", length = 32)
     private String fileFormat;
+
+    @Column(name = "source", length = 64)
+    private String source;
+
+    @Column(name = "progress_version")
+    private Long progressVersion;
 
     @Column(name = "progress", length = 2000)
     private String progress;

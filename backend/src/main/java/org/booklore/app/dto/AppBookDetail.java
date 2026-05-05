@@ -62,6 +62,10 @@ public class AppBookDetail {
     public static class EpubProgress {
         private String cfi;
         private String href;
+        private String anchor;
+        private Float contentSourceProgressPercent;
+        private Long bookFileId;
+        private String locatorPrecision;
         private Float percentage;
         private Instant updatedAt;
     }
@@ -72,6 +76,8 @@ public class AppBookDetail {
     @AllArgsConstructor
     public static class PdfProgress {
         private Integer page;
+        private Long bookFileId;
+        private String locatorPrecision;
         private Float percentage;
         private Instant updatedAt;
     }
@@ -82,6 +88,8 @@ public class AppBookDetail {
     @AllArgsConstructor
     public static class CbxProgress {
         private Integer page;
+        private Long bookFileId;
+        private String locatorPrecision;
         private Float percentage;
         private Instant updatedAt;
     }
@@ -93,6 +101,7 @@ public class AppBookDetail {
     public static class AudiobookProgress {
         private Long positionMs;
         private Integer trackIndex;
+        private Long bookFileId;
         private Float percentage;
         private Instant updatedAt;
     }
@@ -105,6 +114,13 @@ public class AppBookDetail {
         private Float percentage;
         private String device;
         private String deviceId;
+        private Long bookFileId;
+        private String bookHash;
+        private String currentHash;
+        private String initialHash;
+        private String fileFormat;
+        private String source;
+        private Long progressVersion;
         private Instant lastSyncTime;
     }
 }

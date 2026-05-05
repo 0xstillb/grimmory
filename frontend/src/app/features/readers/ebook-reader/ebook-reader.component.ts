@@ -393,6 +393,21 @@ export class EbookReaderComponent implements OnInit {
     this.pendingInitialChapterRestore = null;
 
     const progress = book.epubProgress;
+    const strategy = progress?.cfi
+      ? 'cfi'
+      : progress?.href
+        ? 'href'
+        : progress?.locatorPrecision === 'percentage_only' || typeof progress?.percentage === 'number' && progress.percentage > 0
+          ? 'percentage_only'
+          : 'start';
+
+    console.info('[Web Reader][restore] requested', {
+      bookId: this.bookId,
+      bookFileId: this.bookFileId,
+      strategy,
+      locatorPrecision: progress?.locatorPrecision ?? null,
+      epubProgress: progress,
+    });
 
     if (progress?.cfi) {
       return this.viewManager.goTo(progress.cfi);
@@ -435,6 +450,15 @@ export class EbookReaderComponent implements OnInit {
       detail.section?.current,
       pendingRestore.contentSourceProgressPercent
     );
+
+    console.info('[Web Reader][restore] chapter reconcile', {
+      bookId: this.bookId,
+      bookFileId: this.bookFileId,
+      pendingRestore,
+      currentHref,
+      targetFraction,
+      currentFraction: detail.fraction,
+    });
 
     if (targetFraction === null) {
       return this.retryInitialRestore(detail);
@@ -480,6 +504,14 @@ export class EbookReaderComponent implements OnInit {
   private handleRelocateProgress(detail: RelocateProgressData): void {
     this.progressService.handleRelocateEvent(detail);
     this.progressData.set(this.progressService.currentProgressData);
+    console.info('[Web Reader][restore] landed', {
+      bookId: this.bookId,
+      bookFileId: this.bookFileId,
+      cfi: this.progressService.currentCfi,
+      href: this.progressService.currentChapterHref,
+      fraction: this.progressService.currentProgressData?.fraction,
+      chapterName: this.progressService.currentChapterName,
+    });
     this.updateBookmarkIndicator();
   }
 

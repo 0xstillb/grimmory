@@ -73,11 +73,11 @@ public interface AppBookMapper {
     @Mapping(target = "isPhysical", source = "book.isPhysical")
     @Mapping(target = "fileTypes", source = "book", qualifiedByName = "mapFileTypes")
     @Mapping(target = "files", source = "book", qualifiedByName = "mapFiles")
-    @Mapping(target = "epubProgress", source = "progress", qualifiedByName = "mapEpubProgress")
-    @Mapping(target = "pdfProgress", source = "progress", qualifiedByName = "mapPdfProgress")
-    @Mapping(target = "cbxProgress", source = "progress", qualifiedByName = "mapCbxProgress")
-    @Mapping(target = "audiobookProgress", source = "fileProgress", qualifiedByName = "mapAudiobookProgress")
-    @Mapping(target = "koreaderProgress", source = "progress", qualifiedByName = "mapKoreaderProgress")
+    @Mapping(target = "epubProgress", expression = "java(mapEpubProgress(progress, fileProgress))")
+    @Mapping(target = "pdfProgress", expression = "java(mapPdfProgress(progress, fileProgress))")
+    @Mapping(target = "cbxProgress", expression = "java(mapCbxProgress(progress, fileProgress))")
+    @Mapping(target = "audiobookProgress", expression = "java(mapAudiobookProgress(fileProgress))")
+    @Mapping(target = "koreaderProgress", expression = "java(mapKoreaderProgress(progress, book))")
     AppBookDetail toDetail(BookEntity book, UserBookProgressEntity progress, UserBookFileProgressEntity fileProgress);
 
     default AppBookProgressResponse toProgressResponse(UserBookProgressEntity progress, UserBookFileProgressEntity fileProgress) {
@@ -86,11 +86,11 @@ public interface AppBookMapper {
                 .readStatus(progress != null && progress.getReadStatus() != null
                         ? progress.getReadStatus().name() : null)
                 .lastReadTime(progress != null ? progress.getLastReadTime() : null)
-                .epubProgress(mapEpubProgress(progress))
-                .pdfProgress(mapPdfProgress(progress))
-                .cbxProgress(mapCbxProgress(progress))
+                .epubProgress(mapEpubProgress(progress, fileProgress))
+                .pdfProgress(mapPdfProgress(progress, fileProgress))
+                .cbxProgress(mapCbxProgress(progress, fileProgress))
                 .audiobookProgress(mapAudiobookProgress(fileProgress))
-                .koreaderProgress(mapKoreaderProgress(progress))
+                .koreaderProgress(mapKoreaderProgress(progress, null))
                 .build();
     }
 
@@ -176,59 +176,134 @@ public interface AppBookMapper {
     }
 
     @Named("mapEpubProgress")
-    default AppBookDetail.EpubProgress mapEpubProgress(UserBookProgressEntity progress) {
-        if (progress == null) {
-            return null;
+    default AppBookDetail.EpubProgress mapEpubProgress(UserBookProgressEntity progress, UserBookFileProgressEntity fileProgress) {
+        String cfi = null;
+        String href = null;
+        String anchor = null;
+        Float contentSourceProgressPercent = null;
+        Float percentage = null;
+        Long bookFileId = null;
+        String locatorPrecision = null;
+        java.time.Instant updatedAt = progress != null ? progress.getLastReadTime()
+                : (fileProgress != null ? fileProgress.getLastReadTime() : null);
+
+        if (fileProgress != null && fileProgress.getBookFile() != null
+                && fileProgress.getBookFile().getBookType() != null
+                && switch (fileProgress.getBookFile().getBookType()) {
+                    case EPUB, FB2, MOBI, AZW3 -> true;
+                    default -> false;
+                }) {
+            cfi = fileProgress.getPositionData();
+            href = fileProgress.getPositionHref();
+            anchor = extractAnchor(href);
+            contentSourceProgressPercent = fileProgress.getContentSourceProgressPercent();
+            percentage = fileProgress.getProgressPercent();
+            bookFileId = fileProgress.getBookFile().getId();
+            locatorPrecision = contentSourceProgressPercent != null || cfi != null ? "exact" : "percentage_only";
         }
-        Float percentage = progress.getEpubProgressPercent() != null
-                ? progress.getEpubProgressPercent()
-                : (progress.getKoreaderProgressPercent() != null
-                        ? progress.getKoreaderProgressPercent() * 100f
-                        : null);
-        if (progress.getEpubProgress() == null && percentage == null) {
+
+        if (cfi == null && progress != null) {
+            cfi = progress.getEpubProgress();
+            href = progress.getEpubProgressHref();
+            percentage = progress.getEpubProgressPercent();
+        }
+
+        if (progress != null && percentage == null && progress.getKoreaderProgressPercent() != null) {
+            percentage = progress.getKoreaderProgressPercent() * 100f;
+        }
+
+        if (locatorPrecision == null) {
+            locatorPrecision = (cfi != null || href != null) ? "exact" : "percentage_only";
+        }
+
+        if (cfi == null && percentage == null && contentSourceProgressPercent == null) {
             return null;
         }
         return AppBookDetail.EpubProgress.builder()
-                .cfi(progress.getEpubProgress())
-                .href(progress.getEpubProgressHref())
+                .cfi(cfi)
+                .href(href)
+                .anchor(anchor)
+                .contentSourceProgressPercent(contentSourceProgressPercent)
+                .bookFileId(bookFileId)
+                .locatorPrecision(locatorPrecision)
                 .percentage(percentage)
-                .updatedAt(progress.getLastReadTime())
+                .updatedAt(updatedAt)
                 .build();
     }
 
     @Named("mapPdfProgress")
-    default AppBookDetail.PdfProgress mapPdfProgress(UserBookProgressEntity progress) {
-        if (progress == null || progress.getPdfProgress() == null) {
+    default AppBookDetail.PdfProgress mapPdfProgress(UserBookProgressEntity progress, UserBookFileProgressEntity fileProgress) {
+        Integer page = progress != null ? progress.getPdfProgress() : null;
+        Float percentage = progress != null ? progress.getPdfProgressPercent() : null;
+        Long bookFileId = null;
+        String locatorPrecision = null;
+        java.time.Instant updatedAt = progress != null ? progress.getLastReadTime()
+                : (fileProgress != null ? fileProgress.getLastReadTime() : null);
+
+        if (fileProgress != null && fileProgress.getBookFile() != null && fileProgress.getBookFile().getBookType() == BookFileType.PDF) {
+            page = parseIntOrNull(fileProgress.getPositionData());
+            percentage = fileProgress.getProgressPercent();
+            bookFileId = fileProgress.getBookFile().getId();
+            locatorPrecision = page != null ? "exact" : "percentage_only";
+        }
+
+        if (page == null && percentage == null) {
             return null;
         }
         return AppBookDetail.PdfProgress.builder()
-                .page(progress.getPdfProgress())
-                .percentage(progress.getPdfProgressPercent())
-                .updatedAt(progress.getLastReadTime())
+                .page(page)
+                .bookFileId(bookFileId)
+                .locatorPrecision(locatorPrecision)
+                .percentage(percentage)
+                .updatedAt(updatedAt)
                 .build();
     }
 
     @Named("mapCbxProgress")
-    default AppBookDetail.CbxProgress mapCbxProgress(UserBookProgressEntity progress) {
-        if (progress == null || progress.getCbxProgress() == null) {
+    default AppBookDetail.CbxProgress mapCbxProgress(UserBookProgressEntity progress, UserBookFileProgressEntity fileProgress) {
+        Integer page = progress != null ? progress.getCbxProgress() : null;
+        Float percentage = progress != null ? progress.getCbxProgressPercent() : null;
+        Long bookFileId = null;
+        String locatorPrecision = null;
+        java.time.Instant updatedAt = progress != null ? progress.getLastReadTime()
+                : (fileProgress != null ? fileProgress.getLastReadTime() : null);
+
+        if (fileProgress != null && fileProgress.getBookFile() != null && fileProgress.getBookFile().getBookType() == BookFileType.CBX) {
+            page = parseIntOrNull(fileProgress.getPositionData());
+            percentage = fileProgress.getProgressPercent();
+            bookFileId = fileProgress.getBookFile().getId();
+            locatorPrecision = page != null ? "exact" : "percentage_only";
+        }
+
+        if (page == null && percentage == null) {
             return null;
         }
         return AppBookDetail.CbxProgress.builder()
-                .page(progress.getCbxProgress())
-                .percentage(progress.getCbxProgressPercent())
-                .updatedAt(progress.getLastReadTime())
+                .page(page)
+                .bookFileId(bookFileId)
+                .locatorPrecision(locatorPrecision)
+                .percentage(percentage)
+                .updatedAt(updatedAt)
                 .build();
     }
 
     @Named("mapKoreaderProgress")
-    default AppBookDetail.KoreaderProgress mapKoreaderProgress(UserBookProgressEntity progress) {
+    default AppBookDetail.KoreaderProgress mapKoreaderProgress(UserBookProgressEntity progress, BookEntity book) {
         if (progress == null || progress.getKoreaderProgressPercent() == null) {
             return null;
         }
+        BookFileEntity bookFile = book != null ? book.getPrimaryBookFile() : null;
         return AppBookDetail.KoreaderProgress.builder()
                 .percentage(progress.getKoreaderProgressPercent())
                 .device(progress.getKoreaderDevice())
                 .deviceId(progress.getKoreaderDeviceId())
+                .bookFileId(bookFile != null ? bookFile.getId() : null)
+                .bookHash(bookFile != null ? bookFile.getCurrentHash() : null)
+                .currentHash(bookFile != null ? bookFile.getCurrentHash() : null)
+                .initialHash(bookFile != null ? bookFile.getInitialHash() : null)
+                .fileFormat(bookFile != null && bookFile.getBookType() != null ? bookFile.getBookType().name() : null)
+                .source("KOREADER")
+                .progressVersion(progress.getKoreaderLastSyncTime() != null ? progress.getKoreaderLastSyncTime().getEpochSecond() : null)
                 .lastSyncTime(progress.getKoreaderLastSyncTime())
                 .build();
     }
@@ -244,9 +319,33 @@ public interface AppBookMapper {
         return AppBookDetail.AudiobookProgress.builder()
                 .positionMs(parseLongOrNull(fileProgress.getPositionData()))
                 .trackIndex(parseIntOrNull(fileProgress.getPositionHref()))
+                .bookFileId(fileProgress.getBookFile() != null ? fileProgress.getBookFile().getId() : null)
                 .percentage(fileProgress.getProgressPercent())
                 .updatedAt(fileProgress.getLastReadTime())
                 .build();
+    }
+
+    @AfterMapping
+    default void overlayFileProgress(BookEntity bookEntity,
+                                     UserBookProgressEntity progress,
+                                     UserBookFileProgressEntity fileProgress,
+                                     @MappingTarget AppBookDetail book) {
+        if (fileProgress == null || fileProgress.getBookFile() == null || fileProgress.getBookFile().getBookType() == null) {
+            return;
+        }
+        switch (fileProgress.getBookFile().getBookType()) {
+            case EPUB, FB2, MOBI, AZW3 -> book.setEpubProgress(mapEpubProgress(progress, fileProgress));
+            case PDF -> book.setPdfProgress(mapPdfProgress(progress, fileProgress));
+            case CBX -> book.setCbxProgress(mapCbxProgress(progress, fileProgress));
+            case AUDIOBOOK -> book.setAudiobookProgress(mapAudiobookProgress(fileProgress));
+        }
+    }
+
+    default String extractAnchor(String href) {
+        if (href == null) return null;
+        int anchorIndex = href.indexOf('#');
+        if (anchorIndex < 0 || anchorIndex >= href.length() - 1) return null;
+        return href.substring(anchorIndex + 1);
     }
 
     default Long parseLongOrNull(String value) {

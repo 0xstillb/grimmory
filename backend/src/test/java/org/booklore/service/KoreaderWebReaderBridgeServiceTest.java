@@ -26,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
@@ -107,6 +108,10 @@ class KoreaderWebReaderBridgeServiceTest {
         KoreaderWebProgressResponse response = service.getWebProgress(42L);
 
         assertEquals("epubcfi(/6/2!/4/2)", response.getEpubCfi());
+        assertEquals(420L, response.getBookFileId());
+        assertNull(response.getEpubHref());
+        assertEquals("exact", response.getLocatorPrecision());
+        assertEquals(23.4f, response.getWebPercentDisplayOnly());
         assertEquals("/body/DocFragment[1]/body/div[1]/p[2]", response.getRawKoreaderLocation());
         assertEquals(12, response.getCurrentPage());
         assertEquals("cfi_available", response.getConversionStatus());
@@ -136,6 +141,7 @@ class KoreaderWebReaderBridgeServiceTest {
 
         assertTrue(response.getConflictDetected());
         assertFalse(response.getUpdated());
+        assertEquals("failed", response.getLocatorPrecision());
         verify(userBookProgressRepository, never()).save(any(UserBookProgressEntity.class));
         verify(userBookFileProgressRepository, never()).save(any(UserBookFileProgressEntity.class));
     }
@@ -183,6 +189,115 @@ class KoreaderWebReaderBridgeServiceTest {
     }
 
     @Test
+    void updateWebProgress_preservesExactEpubLocatorWhenOnlyPercentageArrives() throws IOException {
+        BookLoreUserEntity reader = readerWithLibrary(1L, 30L, false);
+        BookEntity book = accessibleEpubBook(42L, 30L);
+        UserBookProgressEntity progress = new UserBookProgressEntity();
+        progress.setUser(reader);
+        progress.setBook(book);
+        progress.setEpubProgress("epubcfi(/6/2!/4/2)");
+        progress.setEpubProgressHref("chapter1.xhtml#p1");
+        progress.setEpubProgressPercent(44.4f);
+        UserBookFileProgressEntity fileProgress = new UserBookFileProgressEntity();
+        fileProgress.setUser(reader);
+        fileProgress.setBookFile(book.getBookFiles().get(0));
+        fileProgress.setPositionData("epubcfi(/6/2!/4/2)");
+        fileProgress.setPositionHref("chapter1.xhtml#p1");
+        fileProgress.setProgressPercent(44.4f);
+        fileProgress.setContentSourceProgressPercent(44.4f);
+
+        when(securityContextService.requireCurrentReaderEntity(true)).thenReturn(reader);
+        when(bookRepository.findByIdWithBookFiles(42L)).thenReturn(Optional.of(book));
+        when(userBookProgressRepository.findByUserIdAndBookId(1L, 42L)).thenReturn(Optional.of(progress));
+        when(userBookFileProgressRepository.findByUserIdAndBookFileId(1L, 420L)).thenReturn(Optional.of(fileProgress));
+        when(koreaderProgressRepository.findByUserIdAndBookFileId(1L, 420L)).thenReturn(Optional.empty());
+        when(koreaderProgressRepository.findByUserIdAndBookId(1L, 42L)).thenReturn(Optional.empty());
+        when(userBookProgressRepository.save(any(UserBookProgressEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userBookFileProgressRepository.save(any(UserBookFileProgressEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        KoreaderWebProgressResponse response = service.updateWebProgress(42L, KoreaderWebProgressUpdateRequest.builder()
+                .bookFileId(420L)
+                .fileFormat("EPUB")
+                .percentage(55.5f)
+                .timestamp(500L)
+                .build());
+
+        assertEquals("updated", response.getConversionStatus());
+        assertEquals("epubcfi(/6/2!/4/2)", progress.getEpubProgress());
+        assertEquals("chapter1.xhtml#p1", progress.getEpubProgressHref());
+        assertEquals("epubcfi(/6/2!/4/2)", fileProgress.getPositionData());
+        assertEquals("chapter1.xhtml#p1", fileProgress.getPositionHref());
+        assertEquals(55.5f, progress.getEpubProgressPercent(), 0.0001f);
+        verify(userBookProgressRepository).save(progress);
+        verify(userBookFileProgressRepository).save(fileProgress);
+    }
+
+    @Test
+    void updateWebProgress_usesPdfBridgeFieldsWhenPdfFileIsRequested() throws IOException {
+        BookLoreUserEntity reader = readerWithLibrary(1L, 30L, false);
+        BookEntity book = accessiblePdfBook(42L, 30L);
+        UserBookProgressEntity progress = new UserBookProgressEntity();
+        progress.setUser(reader);
+        progress.setBook(book);
+
+        when(securityContextService.requireCurrentReaderEntity(true)).thenReturn(reader);
+        when(bookRepository.findByIdWithBookFiles(42L)).thenReturn(Optional.of(book));
+        when(userBookProgressRepository.findByUserIdAndBookId(1L, 42L)).thenReturn(Optional.of(progress));
+        when(userBookFileProgressRepository.findByUserIdAndBookFileId(1L, 420L)).thenReturn(Optional.empty());
+        when(koreaderProgressRepository.findByUserIdAndBookFileId(1L, 420L)).thenReturn(Optional.empty());
+        when(koreaderProgressRepository.findByUserIdAndBookId(1L, 42L)).thenReturn(Optional.empty());
+        when(userBookProgressRepository.save(any(UserBookProgressEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userBookFileProgressRepository.save(any(UserBookFileProgressEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        KoreaderWebProgressResponse response = service.updateWebProgress(42L, KoreaderWebProgressUpdateRequest.builder()
+                .bookFileId(420L)
+                .fileFormat("PDF")
+                .currentPage(17)
+                .totalPages(200)
+                .percentage(0.5f)
+                .timestamp(500L)
+                .build());
+
+        assertEquals("pdf_page", response.getConversionStatus());
+        assertEquals(17, response.getCurrentPage());
+        assertEquals(17, response.getPdfCurrentPage());
+        assertNull(response.getEpubCfi());
+
+        ArgumentCaptor<UserBookProgressEntity> progressCaptor = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(userBookProgressRepository).save(progressCaptor.capture());
+        assertEquals(17, progressCaptor.getValue().getPdfProgress());
+        assertEquals(0.5f, progressCaptor.getValue().getPdfProgressPercent());
+
+        ArgumentCaptor<UserBookFileProgressEntity> fileProgressCaptor = ArgumentCaptor.forClass(UserBookFileProgressEntity.class);
+        verify(userBookFileProgressRepository).save(fileProgressCaptor.capture());
+        assertEquals("17", fileProgressCaptor.getValue().getPositionData());
+        assertEquals(50.0f, fileProgressCaptor.getValue().getProgressPercent());
+    }
+
+    @Test
+    void updateWebProgress_returnsFileMismatchWhenIdentityFormatDoesNotMatch() throws IOException {
+        BookLoreUserEntity reader = readerWithLibrary(1L, 30L, false);
+        BookEntity book = accessibleEpubBook(42L, 30L);
+
+        when(securityContextService.requireCurrentReaderEntity(true)).thenReturn(reader);
+        when(bookRepository.findByIdWithBookFiles(42L)).thenReturn(Optional.of(book));
+
+        KoreaderWebProgressResponse response = service.updateWebProgress(42L, KoreaderWebProgressUpdateRequest.builder()
+                .bookFileId(420L)
+                .fileFormat("PDF")
+                .currentPage(17)
+                .totalPages(200)
+                .percentage(0.5f)
+                .timestamp(500L)
+                .build());
+
+        assertEquals("file_mismatch", response.getConversionStatus());
+        assertFalse(response.getUpdated());
+        verify(userBookProgressRepository, never()).save(any(UserBookProgressEntity.class));
+        verify(userBookFileProgressRepository, never()).save(any(UserBookFileProgressEntity.class));
+    }
+
+    @Test
     void resolveCfi_returnsFallbackWhenConversionFails() throws IOException {
         BookLoreUserEntity reader = readerWithLibrary(1L, 30L, false);
         BookEntity book = accessibleEpubBook(42L, 30L);
@@ -200,9 +315,31 @@ class KoreaderWebReaderBridgeServiceTest {
                 .build());
 
         assertFalse(response.isConverted());
-        assertEquals("conversion_failed", response.getConversionStatus());
+        assertEquals("percentage_only", response.getConversionStatus());
         assertEquals("/body/DocFragment[1]/body/div[1]/bad", response.getRawKoreaderXPointer());
         assertEquals(12, response.getCurrentPage());
+    }
+
+    @Test
+    void resolveCfi_returnsPdfPageWhenPdfBridgeIsRequested() throws IOException {
+        BookLoreUserEntity reader = readerWithLibrary(1L, 30L, false);
+        BookEntity book = accessiblePdfBook(42L, 30L);
+
+        when(securityContextService.requireCurrentReaderEntity(true)).thenReturn(reader);
+        when(bookRepository.findByIdWithBookFiles(42L)).thenReturn(Optional.of(book));
+
+        KoreaderCfiResolveResponse response = service.resolveCfi(42L, KoreaderCfiResolveRequest.builder()
+                .bookFileId(420L)
+                .fileFormat("PDF")
+                .currentPage(12)
+                .totalPages(200)
+                .percentage(6.0f)
+                .build());
+
+        assertFalse(response.isConverted());
+        assertEquals("pdf_page", response.getConversionStatus());
+        assertEquals(12, response.getCurrentPage());
+        assertNull(response.getEpubCfi());
     }
 
     @Test
@@ -226,9 +363,9 @@ class KoreaderWebReaderBridgeServiceTest {
                 .bookFiles(new java.util.ArrayList<>(java.util.List.of(
                         BookFileEntity.builder()
                                 .id(421L)
-                                .bookType(BookFileType.PDF)
+                                .bookType(BookFileType.CBX)
                                 .isBookFormat(true)
-                                .fileName("guide.pdf")
+                                .fileName("guide.cbz")
                                 .fileSubPath("")
                                 .build()
                 )))
@@ -241,7 +378,7 @@ class KoreaderWebReaderBridgeServiceTest {
 
         assertFalse(response.isConverted());
         assertEquals("unsupported_format", response.getConversionStatus());
-        assertEquals("No EPUB-family book file is available for bridge conversion.", response.getReason());
+        assertEquals("No supported bridge file is available for conversion.", response.getReason());
     }
 
     private BookLoreUserEntity readerWithLibrary(Long userId, Long libraryId, boolean admin) {
@@ -276,6 +413,30 @@ class KoreaderWebReaderBridgeServiceTest {
                 .bookType(BookFileType.EPUB)
                 .isBookFormat(true)
                 .fileName(epubFile.getFileName().toString())
+                .fileSubPath("")
+                .build();
+        book.setLibraryPath(org.booklore.model.entity.LibraryPathEntity.builder().path(libraryRoot.toString()).build());
+        book.getBookFiles().add(bookFile);
+        return book;
+    }
+
+    private BookEntity accessiblePdfBook(Long bookId, Long libraryId) throws IOException {
+        Path libraryRoot = Files.createDirectories(tempDir.resolve("library-pdf-" + libraryId));
+        Path pdfFile = libraryRoot.resolve("guide.pdf");
+        Files.writeString(pdfFile, "stub");
+
+        BookEntity book = BookEntity.builder()
+                .id(bookId)
+                .library(LibraryEntity.builder().id(libraryId).name("Library " + libraryId).build())
+                .bookFiles(new java.util.ArrayList<>())
+                .build();
+
+        BookFileEntity bookFile = BookFileEntity.builder()
+                .id(bookId * 10)
+                .book(book)
+                .bookType(BookFileType.PDF)
+                .isBookFormat(true)
+                .fileName(pdfFile.getFileName().toString())
                 .fileSubPath("")
                 .build();
         book.setLibraryPath(org.booklore.model.entity.LibraryPathEntity.builder().path(libraryRoot.toString()).build());

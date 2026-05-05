@@ -174,7 +174,7 @@ public class AppBookService {
                 .orElse(null);
 
         UserBookFileProgressEntity fileProgress = userBookFileProgressRepository
-                .findMostRecentAudiobookProgressByUserIdAndBookId(userId, bookId)
+                .findMostRecentByUserIdAndBookId(userId, bookId)
                 .orElse(null);
 
         return mobileBookMapper.toDetail(book, progress, fileProgress);
@@ -198,7 +198,7 @@ public class AppBookService {
                 .orElse(null);
 
         UserBookFileProgressEntity fileProgress = userBookFileProgressRepository
-                .findMostRecentAudiobookProgressByUserIdAndBookId(userId, bookId)
+                .findMostRecentByUserIdAndBookId(userId, bookId)
                 .orElse(null);
 
         return mobileBookMapper.toProgressResponse(progress, fileProgress);

@@ -24,7 +24,11 @@ public class KoreaderSecurityContextService {
 
         Object principal = authentication.getPrincipal();
         if (principal instanceof BookLoreUser user) {
-            return new AuthenticatedReader(user.getId(), user.getUsername(), false, true, false);
+            BookLoreUserEntity userEntity = userRepository.findByIdWithDetails(user.getId()).orElse(null);
+            boolean syncWithBookloreReader = userEntity != null
+                    && userEntity.getKoreaderUser() != null
+                    && userEntity.getKoreaderUser().isSyncWithBookloreReader();
+            return new AuthenticatedReader(user.getId(), user.getUsername(), false, true, syncWithBookloreReader);
         }
 
         if (principal instanceof KoreaderUserDetails details) {
