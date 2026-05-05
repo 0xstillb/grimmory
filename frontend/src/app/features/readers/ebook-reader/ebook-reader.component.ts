@@ -103,6 +103,7 @@ export class EbookReaderComponent implements OnInit {
   public stateService = inject(ReaderStateService);
 
   protected bookId!: number;
+  protected bookFileId?: number;
   protected altBookType?: string;
 
   private hasLoadedOnce = false;
@@ -241,6 +242,7 @@ export class EbookReaderComponent implements OnInit {
         ]);
       }),
       switchMap(([, , {book, bookType, bookFileId}]) => {
+        this.bookFileId = bookFileId;
         this.progressService.initialize(this.bookId, bookType, bookFileId);
         this.selectionService.initialize(this.bookId);
         this.headerService.initialize(this.bookId, book.metadata?.title || '');

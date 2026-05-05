@@ -64,6 +64,7 @@ export interface EpubProgress {
   href?: string;
   contentSourceProgressPercent?: number | null;
   percentage: number;
+  locatorPrecision?: string | null;
 }
 
 export interface PdfProgress {
