@@ -193,7 +193,8 @@ public interface AppBookMapper {
                     case EPUB, FB2, MOBI, AZW3 -> true;
                     default -> false;
                 }) {
-            cfi = fileProgress.getPositionData();
+            String rawPositionData = fileProgress.getPositionData();
+            cfi = rawPositionData != null && rawPositionData.startsWith("epubcfi(") ? rawPositionData : null;
             href = fileProgress.getPositionHref();
             anchor = extractAnchor(href);
             contentSourceProgressPercent = fileProgress.getContentSourceProgressPercent();

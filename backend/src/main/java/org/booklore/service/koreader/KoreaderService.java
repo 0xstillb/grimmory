@@ -243,6 +243,8 @@ public class KoreaderService {
             if (koProgress.getCurrentPage() != null && koProgress.getCurrentPage() > 0) {
                 fp.setPositionData(String.valueOf(koProgress.getCurrentPage()));
             }
+        } else {
+            fp.setPositionData(null);
         }
 
         if (normalizedPercentage != null) {
