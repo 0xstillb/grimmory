@@ -9,6 +9,7 @@ import org.booklore.model.dto.progress.KoreaderProgress;
 import org.booklore.model.entity.BookEntity;
 import org.booklore.model.entity.BookFileEntity;
 import org.booklore.model.entity.BookLoreUserEntity;
+import org.booklore.model.entity.UserBookFileProgressEntity;
 import org.booklore.model.entity.UserBookProgressEntity;
 import org.booklore.model.entity.koreader.KoreaderProgressEntity;
 import org.booklore.model.enums.BookFileType;
@@ -32,6 +33,7 @@ public class KoreaderService {
 
     private final KoreaderProgressRepository koreaderProgressRepository;
     private final UserBookProgressRepository userBookProgressRepository;
+    private final UserBookFileProgressRepository userBookFileProgressRepository;
     private final BookRepository bookRepository;
     private final BookMapper bookMapper;
     private final KoreaderSecurityContextService securityContextService;
@@ -217,6 +219,42 @@ public class KoreaderService {
         }
 
         userBookProgressRepository.save(ubp);
+
+        updateUserBookFileProgress(reader, bookFile, koProgress, normalizedPercentage, timestamp);
+    }
+
+    private void updateUserBookFileProgress(BookLoreUserEntity reader, BookFileEntity bookFile,
+                                            KoreaderProgress koProgress, Float normalizedPercentage,
+                                            Instant timestamp) {
+        if (bookFile == null) {
+            return;
+        }
+
+        UserBookFileProgressEntity fp = userBookFileProgressRepository
+                .findByUserIdAndBookFileId(reader.getId(), bookFile.getId())
+                .orElseGet(() -> {
+                    UserBookFileProgressEntity e = new UserBookFileProgressEntity();
+                    e.setUser(reader);
+                    e.setBookFile(bookFile);
+                    return e;
+                });
+
+        if (bookFile.getBookType() == BookFileType.PDF) {
+            if (koProgress.getCurrentPage() != null && koProgress.getCurrentPage() > 0) {
+                fp.setPositionData(String.valueOf(koProgress.getCurrentPage()));
+            }
+        } else {
+            if (koProgress.getProgress() != null && !koProgress.getProgress().isBlank()) {
+                fp.setPositionData(koProgress.getProgress());
+            }
+        }
+
+        if (normalizedPercentage != null) {
+            fp.setProgressPercent(normalizedPercentage / 100f);
+        }
+        fp.setLastReadTime(timestamp);
+
+        userBookFileProgressRepository.save(fp);
     }
 
     private BookEntity findAccessibleBookByHash(String bookHash, BookLoreUserEntity reader) {
