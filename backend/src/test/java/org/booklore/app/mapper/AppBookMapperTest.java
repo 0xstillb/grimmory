@@ -71,6 +71,29 @@ class AppBookMapperTest {
     }
 
     @Test
+    void mapEpubProgress_prefersResolvedKoreaderExactLocatorWhenProvided() {
+        AppBookDetail.EpubProgress resolved = AppBookDetail.EpubProgress.builder()
+                .cfi("epubcfi(/6/48!/4/2/6/1:245)")
+                .href("OEBPS/Text/chapter002.xhtml")
+                .anchor("chapter002")
+                .contentSourceProgressPercent(42.4f)
+                .bookFileId(7L)
+                .locatorPrecision("exact")
+                .percentage(10.2f)
+                .updatedAt(Instant.parse("2026-05-06T11:43:56Z"))
+                .build();
+
+        UserBookProgressEntity progress = new UserBookProgressEntity();
+        progress.setLastReadTime(Instant.parse("2026-05-06T11:43:56Z"));
+        progress.setKoreaderLastSyncTime(Instant.parse("2026-05-06T11:43:56Z"));
+        progress.setKoreaderProgressPercent(0.102f);
+
+        AppBookDetail.EpubProgress mapped = mapper.mapEpubProgress(progress, null, resolved);
+
+        assertThat(mapped).isSameAs(resolved);
+    }
+
+    @Test
     void mapReadProgress_prefersNewerWebReaderPercentOverKoreaderPercent() {
         Instant webReadTime = Instant.parse("2026-05-01T12:00:00Z");
         Instant koreaderSyncTime = Instant.parse("2026-05-01T11:00:00Z");

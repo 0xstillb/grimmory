@@ -16,8 +16,10 @@ import org.booklore.repository.BookRepository;
 import org.booklore.repository.ShelfRepository;
 import org.booklore.repository.UserBookFileProgressRepository;
 import org.booklore.repository.UserBookProgressRepository;
+import org.booklore.repository.koreader.KoreaderProgressRepository;
 import org.booklore.service.book.BookService;
 import org.booklore.service.opds.MagicShelfBookService;
+import org.booklore.util.koreader.EpubCfiService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -53,6 +55,8 @@ class AppBookServiceFilterOptionsTest {
     @Mock private BookService bookService;
     @Mock private MagicShelfBookService magicShelfBookService;
     @Mock private EntityManager entityManager;
+    @Mock private KoreaderProgressRepository koreaderProgressRepository;
+    @Mock private EpubCfiService epubCfiService;
 
     private AppBookService service;
 
@@ -63,7 +67,8 @@ class AppBookServiceFilterOptionsTest {
         service = new AppBookService(
                 bookRepository, userBookProgressRepository, userBookFileProgressRepository,
                 shelfRepository, authenticationService, mobileBookMapper,
-                bookService, magicShelfBookService, entityManager
+                bookService, magicShelfBookService, entityManager,
+                koreaderProgressRepository, epubCfiService
         );
     }
 
