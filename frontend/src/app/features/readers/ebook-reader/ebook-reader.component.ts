@@ -395,6 +395,26 @@ export class EbookReaderComponent implements OnInit {
     this.pendingInitialChapterRestore = null;
 
     const progress = book.epubProgress;
+    const restoreByHrefOrProgress = (): Observable<void> => {
+      if (progress?.href) {
+        const chapterProgress = progress.contentSourceProgressPercent;
+        if (typeof chapterProgress === 'number' && Number.isFinite(chapterProgress) && chapterProgress > 0) {
+          this.pendingInitialChapterRestore = {
+            href: this.normalizeHref(progress.href),
+            contentSourceProgressPercent: chapterProgress,
+            attempts: 0
+          };
+        }
+        return this.viewManager.goTo(progress.href);
+      }
+
+      if (progress?.percentage && progress.percentage > 0) {
+        return this.viewManager.goToFraction(progress.percentage / 100);
+      }
+
+      return this.viewManager.goTo(0);
+    };
+
     const strategy = progress?.cfi
       ? 'cfi'
       : progress?.href
@@ -418,33 +438,14 @@ export class EbookReaderComponent implements OnInit {
       } else {
         return this.viewManager.goTo(progress.cfi).pipe(
           catchError(err => {
-            console.warn('[Web Reader][restore] CFI navigation failed, falling back to percentage', err);
-            if (progress?.percentage && progress.percentage > 0) {
-              return this.viewManager.goToFraction(progress.percentage / 100);
-            }
-            return this.viewManager.goTo(0);
+            console.warn('[Web Reader][restore] CFI navigation failed, falling back to href or percentage', err);
+            return restoreByHrefOrProgress();
           })
         );
       }
     }
 
-    if (progress?.href) {
-      const chapterProgress = progress.contentSourceProgressPercent;
-      if (typeof chapterProgress === 'number' && Number.isFinite(chapterProgress) && chapterProgress > 0) {
-        this.pendingInitialChapterRestore = {
-          href: this.normalizeHref(progress.href),
-          contentSourceProgressPercent: chapterProgress,
-          attempts: 0
-        };
-      }
-      return this.viewManager.goTo(progress.href);
-    }
-
-    if (progress?.percentage && progress.percentage > 0) {
-      return this.viewManager.goToFraction(progress.percentage / 100);
-    }
-
-    return this.viewManager.goTo(0);
+    return restoreByHrefOrProgress();
   }
 
   private handlePendingInitialChapterRestore(detail: RelocateProgressData): boolean {
