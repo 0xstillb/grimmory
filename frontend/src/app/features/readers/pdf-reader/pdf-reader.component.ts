@@ -563,7 +563,6 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
           this.spreadMode.set(this.spread);
         }
 
-        this.applyInitialPdfRestore('book');
       });
 
       // Use onLayoutReady for initial page scroll (fires when document layout is calculated)
