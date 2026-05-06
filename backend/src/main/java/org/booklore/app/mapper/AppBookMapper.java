@@ -14,6 +14,7 @@ import org.mapstruct.*;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.time.Instant;
 import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
@@ -158,6 +159,10 @@ public interface AppBookMapper {
             return null;
         }
         if (progress.getKoreaderProgressPercent() != null) {
+            if (progress.getEpubProgressPercent() != null
+                    && isNewerOrUntracked(progress.getLastReadTime(), progress.getKoreaderLastSyncTime())) {
+                return progress.getEpubProgressPercent();
+            }
             return progress.getKoreaderProgressPercent();
         }
         if (progress.getKoboProgressPercent() != null) {
@@ -184,36 +189,41 @@ public interface AppBookMapper {
         Float percentage = null;
         Long bookFileId = null;
         String locatorPrecision = null;
-        java.time.Instant updatedAt = progress != null ? progress.getLastReadTime()
-                : (fileProgress != null ? fileProgress.getLastReadTime() : null);
+        Instant updatedAt = null;
+        Instant koreaderLastSyncTime = progress != null ? progress.getKoreaderLastSyncTime() : null;
 
-        if (fileProgress != null && fileProgress.getBookFile() != null
+        if (progress != null && hasValidEpubCfi(progress.getEpubProgress())
+                && isNewerOrUntracked(progress.getLastReadTime(), koreaderLastSyncTime)) {
+            cfi = progress.getEpubProgress();
+            href = progress.getEpubProgressHref();
+            anchor = extractAnchor(href);
+            percentage = progress.getEpubProgressPercent();
+            locatorPrecision = "exact";
+            updatedAt = progress.getLastReadTime();
+        }
+
+        if (cfi == null && fileProgress != null && fileProgress.getBookFile() != null
                 && fileProgress.getBookFile().getBookType() != null
                 && switch (fileProgress.getBookFile().getBookType()) {
                     case EPUB, FB2, MOBI, AZW3 -> true;
                     default -> false;
-                }) {
-            String rawPositionData = fileProgress.getPositionData();
-            boolean hasValidCfi = rawPositionData != null && rawPositionData.startsWith("epubcfi(");
-            if (hasValidCfi) {
-                cfi = rawPositionData;
-                href = fileProgress.getPositionHref();
-                anchor = extractAnchor(href);
-                contentSourceProgressPercent = fileProgress.getContentSourceProgressPercent();
-                percentage = fileProgress.getProgressPercent();
-                bookFileId = fileProgress.getBookFile().getId();
-                locatorPrecision = contentSourceProgressPercent != null ? "exact" : "percentage_only";
-            }
+                }
+                && hasValidEpubCfi(fileProgress.getPositionData())
+                && isNewerOrUntracked(fileProgress.getLastReadTime(), koreaderLastSyncTime)) {
+            cfi = fileProgress.getPositionData();
+            href = fileProgress.getPositionHref();
+            anchor = extractAnchor(href);
+            contentSourceProgressPercent = fileProgress.getContentSourceProgressPercent();
+            percentage = fileProgress.getProgressPercent();
+            bookFileId = fileProgress.getBookFile().getId();
+            locatorPrecision = contentSourceProgressPercent != null ? "exact" : "percentage_only";
+            updatedAt = fileProgress.getLastReadTime();
         }
 
-        if (cfi == null && progress != null) {
-            cfi = progress.getEpubProgress();
-            href = progress.getEpubProgressHref();
-            percentage = progress.getEpubProgressPercent();
-        }
-
-        if (progress != null && percentage == null && progress.getKoreaderProgressPercent() != null) {
+        if (cfi == null && progress != null && progress.getKoreaderProgressPercent() != null) {
             percentage = progress.getKoreaderProgressPercent() * 100f;
+            updatedAt = koreaderLastSyncTime != null ? koreaderLastSyncTime : progress.getLastReadTime();
+            locatorPrecision = "percentage_only";
         }
 
         if (locatorPrecision == null) {
@@ -233,6 +243,17 @@ public interface AppBookMapper {
                 .percentage(percentage)
                 .updatedAt(updatedAt)
                 .build();
+    }
+
+    private boolean hasValidEpubCfi(String cfi) {
+        return cfi != null && cfi.startsWith("epubcfi(");
+    }
+
+    private boolean isNewerOrUntracked(Instant candidate, Instant baseline) {
+        if (candidate == null) {
+            return baseline == null;
+        }
+        return baseline == null || candidate.isAfter(baseline);
     }
 
     @Named("mapPdfProgress")

@@ -19,14 +19,19 @@ import org.booklore.model.enums.ReadStatus;
 import org.booklore.model.enums.ResetProgressType;
 import org.booklore.model.enums.UserPermission;
 import org.booklore.repository.*;
+import org.booklore.repository.koreader.KoreaderProgressRepository;
 import org.booklore.service.hardcover.HardcoverSyncService;
 import org.booklore.service.kobo.KoboReadingStateService;
+import org.booklore.util.koreader.EpubCfiService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.booklore.model.entity.koreader.KoreaderProgressEntity;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -48,6 +53,8 @@ public class ReadingProgressService {
     private final AuthenticationService authenticationService;
     private final KoboReadingStateService koboReadingStateService;
     private final HardcoverSyncService hardcoverSyncService;
+    private final KoreaderProgressRepository koreaderProgressRepository;
+    private final EpubCfiService epubCfiService;
 
     // ==================== Methods from UserProgressService ====================
 
@@ -107,6 +114,8 @@ public class ReadingProgressService {
                 book.setLastReadTime(fileProgress.getLastReadTime());
             }
         }
+
+        setResolvedEpubProgress(book, progress, fileProgress);
     }
 
     private void setBookProgress(Book book, UserBookProgressEntity progress) {
@@ -119,14 +128,6 @@ public class ReadingProgressService {
         if (progress.getKoreaderProgressPercent() != null) {
             book.setKoreaderProgress(KoProgress.builder()
                     .percentage(roundToOneDecimal(progress.getKoreaderProgressPercent() * 100))
-                    .build());
-        }
-
-        if (progress.getEpubProgress() != null || progress.getEpubProgressPercent() != null) {
-            book.setEpubProgress(EpubProgress.builder()
-                    .cfi(progress.getEpubProgress())
-                    .href(progress.getEpubProgressHref())
-                    .percentage(roundToOneDecimal(progress.getEpubProgressPercent()))
                     .build());
         }
 
@@ -150,13 +151,10 @@ public class ReadingProgressService {
         if (type == null) return;
 
         switch (type) {
-            case EPUB, FB2, MOBI, AZW3 -> book.setEpubProgress(EpubProgress.builder()
-                    .cfi(fileProgress.getPositionData())
-                    .href(fileProgress.getPositionHref())
-                    .contentSourceProgressPercent(roundToOneDecimal(fileProgress.getContentSourceProgressPercent()))
-                    .percentage(roundToOneDecimal(fileProgress.getProgressPercent()))
-                    .ttsPositionCfi(fileProgress.getTtsPositionCfi())
-                    .build());
+            case EPUB, FB2, MOBI, AZW3 -> {
+                // EPUB-like progress is resolved after both legacy and file progress are loaded
+                // so stale web-reader locators do not override newer KOReader sync data.
+            }
             case PDF -> book.setPdfProgress(PdfProgress.builder()
                     .page(parseIntOrNull(fileProgress.getPositionData()))
                     .percentage(roundToOneDecimal(fileProgress.getProgressPercent()))
@@ -171,6 +169,214 @@ public class ReadingProgressService {
                     .percentage(roundToOneDecimal(fileProgress.getProgressPercent()))
                     .build());
         }
+    }
+
+    private void setResolvedEpubProgress(Book book, UserBookProgressEntity progress,
+                                         UserBookFileProgressEntity fileProgress) {
+        BookFileType type = fileProgress != null && fileProgress.getBookFile() != null
+                ? fileProgress.getBookFile().getBookType()
+                : book.getPrimaryFile() != null ? book.getPrimaryFile().getBookType() : null;
+        if (!isEpubLike(type)) {
+            return;
+        }
+
+        Instant koreaderSyncTime = progress != null ? progress.getKoreaderLastSyncTime() : null;
+
+        if (fileProgress != null
+                && hasExactEpubLocator(fileProgress.getPositionData(), fileProgress.getPositionHref())
+                && isNewerOrUntracked(fileProgress.getLastReadTime(), koreaderSyncTime)) {
+            book.setEpubProgress(EpubProgress.builder()
+                    .cfi(hasValidEpubCfi(fileProgress.getPositionData()) ? fileProgress.getPositionData() : null)
+                    .href(fileProgress.getPositionHref())
+                    .contentSourceProgressPercent(roundToOneDecimal(fileProgress.getContentSourceProgressPercent()))
+                    .percentage(roundToOneDecimal(fileProgress.getProgressPercent()))
+                    .ttsPositionCfi(fileProgress.getTtsPositionCfi())
+                    .build());
+            return;
+        }
+
+        if (progress != null
+                && hasExactEpubLocator(progress.getEpubProgress(), progress.getEpubProgressHref())
+                && isNewerOrUntracked(progress.getLastReadTime(), koreaderSyncTime)) {
+            book.setEpubProgress(EpubProgress.builder()
+                    .cfi(hasValidEpubCfi(progress.getEpubProgress()) ? progress.getEpubProgress() : null)
+                    .href(progress.getEpubProgressHref())
+                    .percentage(roundToOneDecimal(progress.getEpubProgressPercent()))
+                    .build());
+            return;
+        }
+
+        EpubProgress resolvedKoreaderLocator = resolveKoreaderExactEpubProgress(book, progress, fileProgress);
+        if (resolvedKoreaderLocator != null) {
+            book.setEpubProgress(resolvedKoreaderLocator);
+            return;
+        }
+
+        if (progress != null && progress.getKoreaderProgressPercent() != null) {
+            book.setEpubProgress(EpubProgress.builder()
+                    .percentage(roundToOneDecimal(progress.getKoreaderProgressPercent() * 100))
+                    .build());
+            return;
+        }
+
+        if (progress != null && progress.getEpubProgressPercent() != null) {
+            book.setEpubProgress(EpubProgress.builder()
+                    .cfi(hasValidEpubCfi(progress.getEpubProgress()) ? progress.getEpubProgress() : null)
+                    .href(progress.getEpubProgressHref())
+                    .percentage(roundToOneDecimal(progress.getEpubProgressPercent()))
+                    .build());
+            return;
+        }
+
+        if (fileProgress != null && (fileProgress.getProgressPercent() != null
+                || hasExactEpubLocator(fileProgress.getPositionData(), fileProgress.getPositionHref()))) {
+            book.setEpubProgress(EpubProgress.builder()
+                    .cfi(hasValidEpubCfi(fileProgress.getPositionData()) ? fileProgress.getPositionData() : null)
+                    .href(fileProgress.getPositionHref())
+                    .contentSourceProgressPercent(roundToOneDecimal(fileProgress.getContentSourceProgressPercent()))
+                    .percentage(roundToOneDecimal(fileProgress.getProgressPercent()))
+                    .ttsPositionCfi(fileProgress.getTtsPositionCfi())
+                    .build());
+        }
+    }
+
+    private boolean isEpubLike(BookFileType type) {
+        return switch (type) {
+            case EPUB, FB2, MOBI, AZW3 -> true;
+            default -> false;
+        };
+    }
+
+    private boolean hasExactEpubLocator(String cfi, String href) {
+        return hasValidEpubCfi(cfi) || (href != null && !href.isBlank());
+    }
+
+    private boolean hasValidEpubCfi(String cfi) {
+        return cfi != null && cfi.startsWith("epubcfi(");
+    }
+
+    private boolean isNewerOrUntracked(Instant candidate, Instant baseline) {
+        if (candidate == null) {
+            return baseline == null;
+        }
+        return baseline == null || candidate.isAfter(baseline);
+    }
+
+    private EpubProgress resolveKoreaderExactEpubProgress(Book book, UserBookProgressEntity progress,
+                                                          UserBookFileProgressEntity fileProgress) {
+        if (progress == null || progress.getKoreaderLastSyncTime() == null || book == null || book.getId() == null) {
+            return null;
+        }
+
+        Long userId = resolveUserId(progress, fileProgress);
+        if (userId == null) {
+            return null;
+        }
+
+        BookFileEntity bridgeFile = resolveEpubBridgeFile(progress, fileProgress);
+        if (bridgeFile == null) {
+            return null;
+        }
+
+        KoreaderProgressEntity nativeProgress = findKoreaderProgress(userId, book.getId(), bridgeFile.getId());
+        if (nativeProgress == null) {
+            return null;
+        }
+
+        String rawXPointer = chooseRawXPointer(nativeProgress.getLocation(), nativeProgress.getProgress());
+        if (rawXPointer == null) {
+            return null;
+        }
+
+        Path bridgePath = resolveExistingBookFilePath(bridgeFile);
+        if (bridgePath == null) {
+            return null;
+        }
+
+        try {
+            String resolvedCfi = epubCfiService.convertXPointerToCfi(bridgePath, rawXPointer);
+            if (!hasValidEpubCfi(resolvedCfi)) {
+                return null;
+            }
+
+            EpubCfiService.CfiLocation location = epubCfiService.resolveCfiLocation(bridgePath, resolvedCfi).orElse(null);
+            Float percentage = progress.getKoreaderProgressPercent() != null
+                    ? roundToOneDecimal(progress.getKoreaderProgressPercent() * 100)
+                    : roundToOneDecimal(nativeProgress.getPercentage());
+
+            return EpubProgress.builder()
+                    .cfi(resolvedCfi)
+                    .href(location != null ? location.href() : null)
+                    .contentSourceProgressPercent(location != null
+                            ? roundToOneDecimal(location.contentSourceProgressPercent())
+                            : null)
+                    .percentage(percentage)
+                    .build();
+        } catch (Exception e) {
+            log.debug("Failed to resolve KOReader EPUB locator for bookId={}: {}", book.getId(), e.getMessage());
+            return null;
+        }
+    }
+
+    private Long resolveUserId(UserBookProgressEntity progress, UserBookFileProgressEntity fileProgress) {
+        if (progress != null && progress.getUser() != null) {
+            return progress.getUser().getId();
+        }
+        if (fileProgress != null && fileProgress.getUser() != null) {
+            return fileProgress.getUser().getId();
+        }
+        return null;
+    }
+
+    private BookFileEntity resolveEpubBridgeFile(UserBookProgressEntity progress, UserBookFileProgressEntity fileProgress) {
+        if (fileProgress != null && isEpubLike(fileProgress.getBookFile() != null ? fileProgress.getBookFile().getBookType() : null)) {
+            return fileProgress.getBookFile();
+        }
+        if (progress != null && progress.getBook() != null && isEpubLike(progress.getBook().getPrimaryBookFile() != null
+                ? progress.getBook().getPrimaryBookFile().getBookType()
+                : null)) {
+            return progress.getBook().getPrimaryBookFile();
+        }
+        return null;
+    }
+
+    private KoreaderProgressEntity findKoreaderProgress(Long userId, Long bookId, Long bookFileId) {
+        if (userId == null || bookId == null) {
+            return null;
+        }
+        if (bookFileId != null) {
+            Optional<KoreaderProgressEntity> byFile = koreaderProgressRepository.findByUserIdAndBookFileId(userId, bookFileId);
+            if (byFile != null && byFile.isPresent()) {
+                return byFile.get();
+            }
+        }
+        Optional<KoreaderProgressEntity> byBook = koreaderProgressRepository.findByUserIdAndBookId(userId, bookId);
+        return byBook != null ? byBook.orElse(null) : null;
+    }
+
+    private Path resolveExistingBookFilePath(BookFileEntity bookFile) {
+        if (bookFile == null) {
+            return null;
+        }
+        try {
+            Path path = bookFile.getFullFilePath();
+            if (path != null && Files.exists(path)) {
+                return path;
+            }
+        } catch (Exception e) {
+            log.debug("Unable to resolve EPUB path for KOReader bridge: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    private String chooseRawXPointer(String... values) {
+        for (String value : values) {
+            String trimmed = value == null ? null : value.trim();
+            if (trimmed != null && !trimmed.isEmpty() && trimmed.startsWith("/")) {
+                return trimmed;
+            }
+        }
+        return null;
     }
 
     private Integer parseIntOrNull(String value) {

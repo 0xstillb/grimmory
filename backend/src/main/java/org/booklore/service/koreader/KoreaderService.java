@@ -210,6 +210,18 @@ public class KoreaderService {
             }
         }
 
+        // KOReader EPUB sync only provides an approximate percentage/xpointer. If that
+        // becomes the newest source, stale web-reader CFI fields must be cleared so the
+        // app does not reopen an older exact locator from a previous web session.
+        if (progressBookFile != null && switch (progressBookFile.getBookType()) {
+            case EPUB, FB2, MOBI, AZW3 -> true;
+            default -> false;
+        }) {
+            ubp.setEpubProgress(null);
+            ubp.setEpubProgressHref(null);
+            ubp.setEpubProgressPercent(null);
+        }
+
         if (ubp.getLastReadTime() == null || timestamp.isAfter(ubp.getLastReadTime())) {
             ubp.setLastReadTime(timestamp);
         }

@@ -10,18 +10,23 @@ import org.booklore.model.dto.request.BookFileProgress;
 import org.booklore.model.dto.request.ReadProgressRequest;
 import org.booklore.model.dto.response.BookStatusUpdateResponse;
 import org.booklore.model.entity.*;
+import org.booklore.model.entity.koreader.KoreaderProgressEntity;
 import org.booklore.model.enums.BookFileType;
 import org.booklore.model.enums.ReadStatus;
 import org.booklore.model.enums.ResetProgressType;
 import org.booklore.repository.*;
 import org.booklore.service.kobo.KoboReadingStateService;
 import org.booklore.service.hardcover.HardcoverSyncService;
+import org.booklore.repository.koreader.KoreaderProgressRepository;
+import org.booklore.util.koreader.EpubCfiService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.*;
 
@@ -46,6 +51,10 @@ class ReadingProgressServiceTest {
     private KoboReadingStateService koboReadingStateService;
     @Mock
     private HardcoverSyncService hardcoverSyncService;
+    @Mock
+    private KoreaderProgressRepository koreaderProgressRepository;
+    @Mock
+    private EpubCfiService epubCfiService;
 
     @InjectMocks
     private ReadingProgressService readingProgressService;
@@ -123,10 +132,13 @@ class ReadingProgressServiceTest {
 
     @Test
     void enrichBookWithProgress_shouldSetProgressFields() {
-        Book book = Book.builder().id(1L).build();
+        Book book = Book.builder()
+                .id(1L)
+                .primaryFile(org.booklore.model.dto.BookFile.builder().bookType(BookFileType.EPUB).build())
+                .build();
         UserBookProgressEntity progress = new UserBookProgressEntity();
         progress.setReadStatus(ReadStatus.READING);
-        progress.setEpubProgress("cfi");
+        progress.setEpubProgress("epubcfi(/6/2!/4/2/8)");
         progress.setEpubProgressPercent(50.0f);
         progress.setLastReadTime(Instant.now());
 
@@ -134,17 +146,20 @@ class ReadingProgressServiceTest {
 
         assertEquals("READING", book.getReadStatus());
         assertNotNull(book.getEpubProgress());
-        assertEquals("cfi", book.getEpubProgress().getCfi());
+        assertEquals("epubcfi(/6/2!/4/2/8)", book.getEpubProgress().getCfi());
         assertEquals(50.0f, book.getEpubProgress().getPercentage());
     }
 
     @Test
     void enrichBookWithProgress_withFileProgress_shouldOverlayFileProgress() {
-        Book book = Book.builder().id(1L).build();
+        Book book = Book.builder()
+                .id(1L)
+                .primaryFile(org.booklore.model.dto.BookFile.builder().bookType(BookFileType.EPUB).build())
+                .build();
 
         UserBookProgressEntity progress = new UserBookProgressEntity();
         progress.setReadStatus(ReadStatus.READING);
-        progress.setEpubProgress("old-cfi");
+        progress.setEpubProgress("epubcfi(/6/2!/4/2/4)");
         progress.setEpubProgressPercent(30.0f);
         progress.setLastReadTime(Instant.now().minusSeconds(100));
 
@@ -153,7 +168,7 @@ class ReadingProgressServiceTest {
 
         UserBookFileProgressEntity fileProgress = new UserBookFileProgressEntity();
         fileProgress.setBookFile(bookFile);
-        fileProgress.setPositionData("new-cfi");
+        fileProgress.setPositionData("epubcfi(/6/2!/4/2/6)");
         fileProgress.setPositionHref("OPS/chapter3.xhtml");
         fileProgress.setContentSourceProgressPercent(18.6f);
         fileProgress.setProgressPercent(50.0f);
@@ -161,10 +176,106 @@ class ReadingProgressServiceTest {
 
         readingProgressService.enrichBookWithProgress(book, progress, fileProgress);
 
-        assertEquals("new-cfi", book.getEpubProgress().getCfi());
+        assertEquals("epubcfi(/6/2!/4/2/6)", book.getEpubProgress().getCfi());
         assertEquals("OPS/chapter3.xhtml", book.getEpubProgress().getHref());
         assertEquals(18.6f, book.getEpubProgress().getContentSourceProgressPercent());
         assertEquals(50.0f, book.getEpubProgress().getPercentage());
+    }
+
+    @Test
+    void enrichBookWithProgress_withOlderExactEpubLocatorAndNewerKoreader_shouldPreferKoreaderPercentage() {
+        Book book = Book.builder()
+                .id(1L)
+                .primaryFile(org.booklore.model.dto.BookFile.builder().bookType(BookFileType.EPUB).build())
+                .build();
+
+        UserBookProgressEntity progress = new UserBookProgressEntity();
+        progress.setReadStatus(ReadStatus.READING);
+        progress.setLastReadTime(Instant.parse("2026-05-06T11:43:56Z"));
+        progress.setKoreaderLastSyncTime(Instant.parse("2026-05-06T11:43:56Z"));
+        progress.setKoreaderProgressPercent(0.102f);
+        progress.setEpubProgress("epubcfi(/6/526!/4,/90/1:146,/134/1:91)");
+        progress.setEpubProgressHref("OEBPS/Text/0261.xhtml");
+        progress.setEpubProgressPercent(13.2f);
+
+        BookFileEntity bookFile = new BookFileEntity();
+        bookFile.setBookType(BookFileType.EPUB);
+
+        UserBookFileProgressEntity fileProgress = new UserBookFileProgressEntity();
+        fileProgress.setBookFile(bookFile);
+        fileProgress.setPositionData("epubcfi(/6/526!/4,/68,/126/1:44)");
+        fileProgress.setPositionHref("OEBPS/Text/0261.xhtml");
+        fileProgress.setProgressPercent(13.2f);
+        fileProgress.setLastReadTime(Instant.parse("2026-05-06T11:33:56Z"));
+
+        readingProgressService.enrichBookWithProgress(book, progress, fileProgress);
+
+        assertNotNull(book.getEpubProgress());
+        assertNull(book.getEpubProgress().getCfi());
+        assertNull(book.getEpubProgress().getHref());
+        assertEquals(10.2f, book.getEpubProgress().getPercentage());
+    }
+
+    @Test
+    void enrichBookWithProgress_withNewerKoreaderXPointer_shouldResolveExactEpubLocator() throws Exception {
+        Path libraryRoot = Files.createTempDirectory("reading-progress-service");
+        Path epubFile = Files.createFile(libraryRoot.resolve("book.epub"));
+
+        Book book = Book.builder()
+                .id(1L)
+                .primaryFile(org.booklore.model.dto.BookFile.builder().bookType(BookFileType.EPUB).build())
+                .build();
+
+        BookLoreUserEntity user = new BookLoreUserEntity();
+        user.setId(7L);
+
+        LibraryPathEntity libraryPath = new LibraryPathEntity();
+        libraryPath.setPath(libraryRoot.toString());
+
+        BookEntity bookEntity = new BookEntity();
+        bookEntity.setId(1L);
+        bookEntity.setLibraryPath(libraryPath);
+
+        BookFileEntity bookFile = new BookFileEntity();
+        bookFile.setId(11L);
+        bookFile.setBook(bookEntity);
+        bookFile.setBookType(BookFileType.EPUB);
+        bookFile.setFileSubPath("");
+        bookFile.setFileName(epubFile.getFileName().toString());
+        bookEntity.setBookFiles(List.of(bookFile));
+
+        UserBookProgressEntity progress = new UserBookProgressEntity();
+        progress.setUser(user);
+        progress.setBook(bookEntity);
+        progress.setReadStatus(ReadStatus.READING);
+        progress.setLastReadTime(Instant.parse("2026-05-06T11:43:56Z"));
+        progress.setKoreaderLastSyncTime(Instant.parse("2026-05-06T11:43:56Z"));
+        progress.setKoreaderProgressPercent(0.102f);
+
+        UserBookFileProgressEntity fileProgress = new UserBookFileProgressEntity();
+        fileProgress.setUser(user);
+        fileProgress.setBookFile(bookFile);
+        fileProgress.setLastReadTime(Instant.parse("2026-05-06T11:33:56Z"));
+        fileProgress.setProgressPercent(13.2f);
+
+        KoreaderProgressEntity koreaderProgress = new KoreaderProgressEntity();
+        koreaderProgress.setLocation("/body/DocFragment[12]/body/div[3]/p[7]/text().245");
+        koreaderProgress.setProgress("/body/DocFragment[12]/body/div[3]/p[7]/text().245");
+        koreaderProgress.setPercentage(10.2f);
+
+        when(koreaderProgressRepository.findByUserIdAndBookFileId(7L, 11L)).thenReturn(Optional.of(koreaderProgress));
+        when(epubCfiService.convertXPointerToCfi(eq(epubFile), anyString()))
+                .thenReturn("epubcfi(/6/48!/4/2/6/1:245)");
+        when(epubCfiService.resolveCfiLocation(eq(epubFile), eq("epubcfi(/6/48!/4/2/6/1:245)")))
+                .thenReturn(Optional.of(new EpubCfiService.CfiLocation("OEBPS/Text/chapter002.xhtml", 42.4f)));
+
+        readingProgressService.enrichBookWithProgress(book, progress, fileProgress);
+
+        assertNotNull(book.getEpubProgress());
+        assertEquals("epubcfi(/6/48!/4/2/6/1:245)", book.getEpubProgress().getCfi());
+        assertEquals("OEBPS/Text/chapter002.xhtml", book.getEpubProgress().getHref());
+        assertEquals(42.4f, book.getEpubProgress().getContentSourceProgressPercent());
+        assertEquals(10.2f, book.getEpubProgress().getPercentage());
     }
 
     @Test

@@ -12,6 +12,7 @@ import org.booklore.model.entity.BookEntity;
 import org.booklore.model.entity.BookFileEntity;
 import org.booklore.model.entity.BookLoreUserEntity;
 import org.booklore.model.entity.LibraryEntity;
+import org.booklore.model.entity.UserBookProgressEntity;
 import org.booklore.model.entity.UserPermissionsEntity;
 import org.booklore.model.entity.koreader.KoreaderProgressEntity;
 import org.booklore.model.enums.BookFileType;
@@ -232,6 +233,48 @@ class KoreaderServiceTest {
         service.saveProgress("hash", dto);
 
         verify(hardcoverSyncService, never()).syncProgressToHardcover(any(), any(), any());
+    }
+
+    @Test
+    void saveProgress_forEpubClearsStaleWebReaderLocatorFields() {
+        when(securityContextService.requireCurrentReaderEntity(true)).thenReturn(reader);
+        when(bookRepo.findByCurrentOrInitialHash("hash")).thenReturn(Optional.of(book));
+        when(progressRepo.findByUserIdAndBookId(42L, 99L)).thenReturn(Optional.empty());
+
+        UserBookProgressEntity existingProgress = UserBookProgressEntity.builder()
+                .user(reader)
+                .book(book)
+                .lastReadTime(Instant.parse("2026-05-06T11:33:56Z"))
+                .epubProgress("epubcfi(/6/526!/4,/90/1:146,/134/1:91)")
+                .epubProgressHref("OEBPS/Text/0261.xhtml")
+                .epubProgressPercent(0.132f)
+                .build();
+        when(userBookProgressRepository.findByUserIdAndBookId(42L, 99L)).thenReturn(Optional.of(existingProgress));
+
+        var dto = KoreaderProgress.builder()
+                .timestamp(Instant.parse("2026-05-06T11:43:56Z").getEpochSecond())
+                .document("hash")
+                .bookHash("hash")
+                .progress("/body/DocFragment[4]/body/h3/text().0")
+                .location("/body/DocFragment[4]/body/h3/text().0")
+                .percentage(10.2F)
+                .device("KOReader")
+                .device_id("device-1")
+                .currentPage(17)
+                .totalPages(16653)
+                .build();
+
+        service.saveProgress("hash", dto);
+
+        ArgumentCaptor<UserBookProgressEntity> cap = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(userBookProgressRepository).save(cap.capture());
+        UserBookProgressEntity saved = cap.getValue();
+        assertNull(saved.getEpubProgress());
+        assertNull(saved.getEpubProgressHref());
+        assertNull(saved.getEpubProgressPercent());
+        assertEquals(0.102F, saved.getKoreaderProgressPercent());
+        assertEquals(Instant.parse("2026-05-06T11:43:56Z"), saved.getKoreaderLastSyncTime());
+        assertEquals(Instant.parse("2026-05-06T11:43:56Z"), saved.getLastReadTime());
     }
 
     @Test
