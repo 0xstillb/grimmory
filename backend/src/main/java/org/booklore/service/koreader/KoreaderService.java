@@ -198,7 +198,9 @@ public class KoreaderService {
         ubp.setKoreaderProgress(koProgress.getProgress());
         ubp.setKoreaderDevice(koProgress.getDevice());
         ubp.setKoreaderDeviceId(koProgress.getDevice_id());
-        ubp.setKoreaderLastSyncTime(timestamp);
+        // Use server receive time so KOReader sync always appears "newer" than any
+        // previous web-reader session, regardless of the KOReader client clock offset.
+        ubp.setKoreaderLastSyncTime(Instant.now());
 
         BookFileEntity progressBookFile = bookFile;
         if (progressBookFile != null && koProgress.getCurrentPage() != null && koProgress.getCurrentPage() > 0) {
@@ -213,13 +215,23 @@ public class KoreaderService {
         // KOReader EPUB sync only provides an approximate percentage/xpointer. If that
         // becomes the newest source, stale web-reader CFI fields must be cleared so the
         // app does not reopen an older exact locator from a previous web session.
-        if (progressBookFile != null && switch (progressBookFile.getBookType()) {
+        boolean isEpubLike = progressBookFile != null && switch (progressBookFile.getBookType()) {
             case EPUB, FB2, MOBI, AZW3 -> true;
             default -> false;
-        }) {
+        };
+        if (isEpubLike) {
             ubp.setEpubProgress(null);
             ubp.setEpubProgressHref(null);
             ubp.setEpubProgressPercent(null);
+
+            // Also clear per-file stale CFI so the mapper doesn't resurrect it
+            userBookFileProgressRepository
+                    .findByUserIdAndBookFileId(reader.getId(), progressBookFile.getId())
+                    .ifPresent(fp -> {
+                        fp.setPositionData(null);
+                        fp.setPositionHref(null);
+                        userBookFileProgressRepository.save(fp);
+                    });
         }
 
         if (ubp.getLastReadTime() == null || timestamp.isAfter(ubp.getLastReadTime())) {
