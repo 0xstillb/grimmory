@@ -412,7 +412,15 @@ export class EbookReaderComponent implements OnInit {
     });
 
     if (progress?.cfi) {
-      return this.viewManager.goTo(progress.cfi);
+      return this.viewManager.goTo(progress.cfi).pipe(
+        catchError(err => {
+          console.warn('[Web Reader][restore] CFI navigation failed, falling back to percentage', err);
+          if (progress?.percentage && progress.percentage > 0) {
+            return this.viewManager.goToFraction(progress.percentage / 100);
+          }
+          return this.viewManager.goTo(0);
+        })
+      );
     }
 
     if (progress?.href) {
