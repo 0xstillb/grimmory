@@ -1186,10 +1186,6 @@ export class PdfReaderComponent implements OnInit, OnDestroy {
       currentPage: this.page(),
     });
 
-    if (pending.lastAppliedTargetPage === targetPage) {
-      return;
-    }
-
     if (this.page() === targetPage) {
       this.completeInitialPdfRestore(targetPage, true);
       return;
