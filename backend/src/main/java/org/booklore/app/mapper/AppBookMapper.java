@@ -194,13 +194,16 @@ public interface AppBookMapper {
                     default -> false;
                 }) {
             String rawPositionData = fileProgress.getPositionData();
-            cfi = rawPositionData != null && rawPositionData.startsWith("epubcfi(") ? rawPositionData : null;
-            href = fileProgress.getPositionHref();
-            anchor = extractAnchor(href);
-            contentSourceProgressPercent = fileProgress.getContentSourceProgressPercent();
-            percentage = fileProgress.getProgressPercent();
-            bookFileId = fileProgress.getBookFile().getId();
-            locatorPrecision = contentSourceProgressPercent != null || cfi != null ? "exact" : "percentage_only";
+            boolean hasValidCfi = rawPositionData != null && rawPositionData.startsWith("epubcfi(");
+            if (hasValidCfi) {
+                cfi = rawPositionData;
+                href = fileProgress.getPositionHref();
+                anchor = extractAnchor(href);
+                contentSourceProgressPercent = fileProgress.getContentSourceProgressPercent();
+                percentage = fileProgress.getProgressPercent();
+                bookFileId = fileProgress.getBookFile().getId();
+                locatorPrecision = contentSourceProgressPercent != null ? "exact" : "percentage_only";
+            }
         }
 
         if (cfi == null && progress != null) {

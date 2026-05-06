@@ -226,7 +226,7 @@ public class KoreaderService {
     private void updateUserBookFileProgress(BookLoreUserEntity reader, BookFileEntity bookFile,
                                             KoreaderProgress koProgress, Float normalizedPercentage,
                                             Instant timestamp) {
-        if (bookFile == null) {
+        if (bookFile == null || bookFile.getBookType() != BookFileType.PDF) {
             return;
         }
 
@@ -239,12 +239,8 @@ public class KoreaderService {
                     return e;
                 });
 
-        if (bookFile.getBookType() == BookFileType.PDF) {
-            if (koProgress.getCurrentPage() != null && koProgress.getCurrentPage() > 0) {
-                fp.setPositionData(String.valueOf(koProgress.getCurrentPage()));
-            }
-        } else {
-            fp.setPositionData(null);
+        if (koProgress.getCurrentPage() != null && koProgress.getCurrentPage() > 0) {
+            fp.setPositionData(String.valueOf(koProgress.getCurrentPage()));
         }
 
         if (normalizedPercentage != null) {
