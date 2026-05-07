@@ -44,6 +44,10 @@ export interface RelocateProgressData {
   time?: ProgressTime;
 }
 
+export interface RelocateProgressOptions {
+  persist?: boolean;
+}
+
 @Injectable()
 export class ReaderProgressService {
   private bookPatchService = inject(BookPatchService);
@@ -95,8 +99,9 @@ export class ReaderProgressService {
     this.hasStartedSession = false;
   }
 
-  handleRelocateEvent(detail: RelocateProgressData): void {
+  handleRelocateEvent(detail: RelocateProgressData, options: RelocateProgressOptions = {}): void {
     this._currentProgressData = detail;
+    const persist = options.persist !== false;
 
     const cfi = detail?.cfi ?? null;
     const href = detail?.pageItem?.href ?? detail?.tocItem?.href ?? null;
@@ -118,7 +123,6 @@ export class ReaderProgressService {
     }
 
     if (cfi && percentage !== null) {
-      this.bookPatchService.saveEpubProgress(this.bookId, cfi, href ?? '', percentage, this.bookFileId);
       this.readingSessionService.updateProgress(cfi, percentage);
     }
 
@@ -158,6 +162,10 @@ export class ReaderProgressService {
     if (cfi) {
       this._currentCfi = cfi;
       this.bookmarkService.updateCurrentPosition(cfi, chapterLabel);
+    }
+
+    if (persist && cfi && percentage !== null) {
+      this.bookPatchService.saveEpubProgress(this.bookId, cfi, href ?? '', percentage, this.bookFileId);
     }
 
     console.info('[Web Reader][progress] applied state', {

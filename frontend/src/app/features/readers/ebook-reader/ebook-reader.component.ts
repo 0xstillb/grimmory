@@ -83,6 +83,7 @@ export class EbookReaderComponent implements OnInit {
   private static readonly MAX_CHAPTER_PROGRESS_PERCENT = 99.9;
   private static readonly INITIAL_CHAPTER_RESTORE_RETRY_MS = 100;
   private static readonly INITIAL_CHAPTER_RESTORE_MAX_ATTEMPTS = 15;
+  private static readonly INITIAL_RESTORE_PERSISTENCE_SUPPRESSION_MS = 3000;
   private loaderService = inject(ReaderLoaderService);
   private styleService = inject(ReaderStyleService);
   private bookService = inject(BookService);
@@ -113,6 +114,8 @@ export class EbookReaderComponent implements OnInit {
   private sectionFractionsTimeout?: ReturnType<typeof setTimeout>;
   private pendingInitialChapterRestore: PendingInitialChapterRestore | null = null;
   private pendingInitialChapterRestoreTimeout?: ReturnType<typeof setTimeout>;
+  private initialRestorePersistenceSuppressed = false;
+  private initialRestorePersistenceTimeout?: ReturnType<typeof setTimeout>;
 
   isLoading = signal(true);
   showQuickSettings = signal(false);
@@ -151,6 +154,7 @@ export class EbookReaderComponent implements OnInit {
       if (this.relocateTimeout) clearTimeout(this.relocateTimeout);
       if (this.sectionFractionsTimeout) clearTimeout(this.sectionFractionsTimeout);
       if (this.pendingInitialChapterRestoreTimeout) clearTimeout(this.pendingInitialChapterRestoreTimeout);
+      if (this.initialRestorePersistenceTimeout) clearTimeout(this.initialRestorePersistenceTimeout);
 
       if (this._fileUrl) {
         URL.revokeObjectURL(this._fileUrl);
@@ -393,6 +397,7 @@ export class EbookReaderComponent implements OnInit {
 
   private restoreSavedPosition(book: Book): Observable<void> {
     this.pendingInitialChapterRestore = null;
+    this.beginInitialRestorePersistenceSuppression();
 
     const progress = book.epubProgress;
     const restoreByHrefOrProgress = (): Observable<void> => {
@@ -518,7 +523,8 @@ export class EbookReaderComponent implements OnInit {
   }
 
   private handleRelocateProgress(detail: RelocateProgressData): void {
-    this.progressService.handleRelocateEvent(detail);
+    const persist = !this.initialRestorePersistenceSuppressed;
+    this.progressService.handleRelocateEvent(detail, {persist});
     this.progressData.set(this.progressService.currentProgressData);
     console.info('[Web Reader][restore] landed', {
       bookId: this.bookId,
@@ -529,6 +535,21 @@ export class EbookReaderComponent implements OnInit {
       chapterName: this.progressService.currentChapterName,
     });
     this.updateBookmarkIndicator();
+  }
+
+  private beginInitialRestorePersistenceSuppression(): void {
+    this.initialRestorePersistenceSuppressed = true;
+    this.armInitialRestorePersistenceRelease();
+  }
+
+  private armInitialRestorePersistenceRelease(): void {
+    if (this.initialRestorePersistenceTimeout) {
+      clearTimeout(this.initialRestorePersistenceTimeout);
+    }
+    this.initialRestorePersistenceTimeout = setTimeout(() => {
+      this.initialRestorePersistenceSuppressed = false;
+      this.initialRestorePersistenceTimeout = undefined;
+    }, EbookReaderComponent.INITIAL_RESTORE_PERSISTENCE_SUPPRESSION_MS);
   }
 
   private resolveChapterFraction(sectionIndex: number | undefined, chapterProgressPercent: number): number | null {

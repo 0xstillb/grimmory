@@ -189,6 +189,22 @@ describe('ReaderProgressService', () => {
     expect(bookmarkService.updateCurrentPosition).not.toHaveBeenCalled();
   });
 
+  it('can suppress persistence during the initial restore flow', () => {
+    service.initialize(17, 'EPUB', 23);
+
+    service.handleRelocateEvent({
+      cfi: 'epubcfi(/6/99)',
+      fraction: 0.45,
+      pageItem: {href: 'chapter-45.xhtml'},
+      tocItem: {label: 'Chapter 45', href: 'chapter-45.xhtml'},
+    }, {persist: false});
+
+    expect(readingSessionService.startSession).toHaveBeenCalledWith(17, 'EPUB', 'epubcfi(/6/99)', 45);
+    expect(readingSessionService.updateProgress).toHaveBeenCalledWith('epubcfi(/6/99)', 45);
+    expect(bookPatchService.saveEpubProgress).not.toHaveBeenCalled();
+    expect(bookmarkService.updateCurrentPosition).toHaveBeenCalledWith('epubcfi(/6/99)', 'Chapter 45');
+  });
+
   it('falls back to light theme colors when the active theme colors are blank', () => {
     stateService.state.mockReturnValue({
       flow: 'paginated',

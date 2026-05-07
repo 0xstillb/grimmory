@@ -374,12 +374,13 @@ public interface AppBookMapper {
     default void overlayFileProgress(BookEntity bookEntity,
                                      UserBookProgressEntity progress,
                                      UserBookFileProgressEntity fileProgress,
+                                     AppBookDetail.EpubProgress resolvedEpubProgress,
                                      @MappingTarget AppBookDetail book) {
         if (fileProgress == null || fileProgress.getBookFile() == null || fileProgress.getBookFile().getBookType() == null) {
             return;
         }
         switch (fileProgress.getBookFile().getBookType()) {
-            case EPUB, FB2, MOBI, AZW3 -> book.setEpubProgress(mapEpubProgress(progress, fileProgress));
+            case EPUB, FB2, MOBI, AZW3 -> book.setEpubProgress(mapEpubProgress(progress, fileProgress, resolvedEpubProgress));
             case PDF -> book.setPdfProgress(mapPdfProgress(progress, fileProgress));
             case CBX -> book.setCbxProgress(mapCbxProgress(progress, fileProgress));
             case AUDIOBOOK -> book.setAudiobookProgress(mapAudiobookProgress(fileProgress));
