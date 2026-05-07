@@ -7,18 +7,24 @@ import org.booklore.exception.ApiError;
 import org.booklore.model.dto.BookLoreUser;
 import org.booklore.model.dto.CompletionRaceSessionDto;
 import org.booklore.model.dto.PageTurnerSessionDto;
+import org.booklore.model.dto.request.ReadingSessionBatchRequest;
+import org.booklore.model.dto.request.ReadingSessionItemRequest;
 import org.booklore.model.dto.request.ReadingSessionRequest;
 import org.booklore.model.dto.ProgressPercentDto;
+import org.booklore.model.dto.response.ReadingSessionBatchResponse;
 import org.booklore.model.dto.response.*;
 import org.booklore.model.entity.BookEntity;
+import org.booklore.model.entity.BookFileEntity;
 import org.booklore.model.entity.BookLoreUserEntity;
 import org.booklore.model.entity.CategoryEntity;
 import org.booklore.model.entity.ReadingSessionEntity;
+import org.booklore.model.enums.BookFileType;
 import org.booklore.model.enums.ReadStatus;
 import org.booklore.repository.BookRepository;
 import org.booklore.repository.ReadingSessionRepository;
 import org.booklore.repository.UserBookProgressRepository;
 import org.booklore.repository.UserRepository;
+import org.booklore.service.koreader.KoreaderSecurityContextService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -46,6 +52,7 @@ import java.util.stream.Collectors;
 public class ReadingSessionService {
 
     private final AuthenticationService authenticationService;
+    private final KoreaderSecurityContextService koreaderSecurityContextService;
     private final ReadingSessionRepository readingSessionRepository;
     private final BookRepository bookRepository;
     private final UserRepository userRepository;
@@ -92,30 +99,136 @@ public class ReadingSessionService {
 
     @Transactional
     public void recordSession(ReadingSessionRequest request) {
-        BookLoreUser authenticatedUser = authenticationService.getAuthenticatedUser();
-        Long userId = authenticatedUser.getId();
-
-        BookLoreUserEntity userEntity = userRepository.findById(userId).orElseThrow(() -> new UsernameNotFoundException("User not found with ID: " + userId));
+        BookLoreUserEntity userEntity = koreaderSecurityContextService.requireCurrentReaderEntity(true);
+        Long userId = userEntity.getId();
         BookEntity book = bookRepository.findById(request.getBookId()).orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(request.getBookId()));
-
-        ReadingSessionEntity session = ReadingSessionEntity.builder()
-                .user(userEntity)
-                .book(book)
-                .bookType(request.getBookType())
-                .startTime(request.getStartTime())
-                .endTime(request.getEndTime())
-                .durationSeconds(request.getDurationSeconds())
-                .durationFormatted(request.getDurationFormatted())
-                .startProgress(request.getStartProgress())
-                .endProgress(request.getEndProgress())
-                .progressDelta(request.getProgressDelta())
-                .startLocation(request.getStartLocation())
-                .endLocation(request.getEndLocation())
-                .build();
-
-        readingSessionRepository.save(session);
+        ReadingSessionEntity session = readingSessionRepository.save(buildSession(userEntity, book, request, null));
 
         log.info("Reading session persisted successfully: sessionId={}, userId={}, bookId={}, duration={}s", session.getId(), userId, request.getBookId(), request.getDurationSeconds());
+    }
+
+    @Transactional
+    public ReadingSessionBatchResponse recordSessionsBatch(ReadingSessionBatchRequest request) {
+        if (request.getSessions() == null || request.getSessions().isEmpty()) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("Sessions list cannot be empty");
+        }
+
+        BookLoreUserEntity userEntity = koreaderSecurityContextService.requireCurrentReaderEntity(true);
+        Long userId = userEntity.getId();
+        BookEntity book = bookRepository.findById(request.getBookId())
+                .orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(request.getBookId()));
+
+        List<ReadingSessionBatchResponse.SessionResult> results = request.getSessions().stream()
+                .map(item -> {
+                    ReadingSessionEntity session = readingSessionRepository.save(buildSession(userEntity, book, request, item));
+                    return ReadingSessionBatchResponse.SessionResult.builder()
+                            .sessionId(session.getId())
+                            .startTime(session.getStartTime())
+                            .endTime(session.getEndTime())
+                            .build();
+                })
+                .toList();
+
+        return ReadingSessionBatchResponse.builder()
+                .totalRequested(request.getSessions().size())
+                .successCount(results.size())
+                .results(results)
+                .build();
+    }
+
+    private ReadingSessionEntity buildSession(BookLoreUserEntity userEntity, BookEntity book, ReadingSessionRequest request, ReadingSessionItemRequest item) {
+        ReadingSessionEntity.ReadingSessionEntityBuilder builder = ReadingSessionEntity.builder()
+                .user(userEntity)
+                .book(book)
+                .bookHash(resolveBookHash(request.getBookHash(), book))
+                .bookType(resolveBookType(request.getBookType(), book))
+                .device(resolveDevice(request.getDevice(), item != null ? null : request.getDevice()))
+                .deviceId(resolveDeviceId(request.getDeviceId(), item != null ? null : request.getDeviceId()))
+                .startTime(item != null ? item.getStartTime() : request.getStartTime())
+                .endTime(item != null ? item.getEndTime() : request.getEndTime())
+                .durationSeconds(item != null ? item.getDurationSeconds() : request.getDurationSeconds())
+                .durationFormatted(item != null ? item.getDurationFormatted() : request.getDurationFormatted())
+                .startProgress(item != null ? item.getStartProgress() : request.getStartProgress())
+                .endProgress(item != null ? item.getEndProgress() : request.getEndProgress())
+                .progressDelta(item != null ? item.getProgressDelta() : request.getProgressDelta())
+                .startLocation(item != null ? item.getStartLocation() : request.getStartLocation())
+                .endLocation(item != null ? item.getEndLocation() : request.getEndLocation())
+                .currentPage(item != null ? item.getCurrentPage() : request.getCurrentPage())
+                .totalPages(item != null ? item.getTotalPages() : request.getTotalPages());
+        return builder.build();
+    }
+
+    private ReadingSessionEntity buildSession(BookLoreUserEntity userEntity, BookEntity book, ReadingSessionBatchRequest request, ReadingSessionItemRequest item) {
+        ReadingSessionEntity.ReadingSessionEntityBuilder builder = ReadingSessionEntity.builder()
+                .user(userEntity)
+                .book(book)
+                .bookHash(resolveBookHash(request.getBookHash(), book))
+                .bookType(resolveBookType(request.getBookType(), book))
+                .device(resolveDevice(request.getDevice(), null))
+                .deviceId(resolveDeviceId(request.getDeviceId(), null))
+                .startTime(item.getStartTime())
+                .endTime(item.getEndTime())
+                .durationSeconds(item.getDurationSeconds())
+                .durationFormatted(item.getDurationFormatted())
+                .startProgress(item.getStartProgress())
+                .endProgress(item.getEndProgress())
+                .progressDelta(item.getProgressDelta())
+                .startLocation(item.getStartLocation())
+                .endLocation(item.getEndLocation())
+                .currentPage(item.getCurrentPage())
+                .totalPages(item.getTotalPages());
+        return builder.build();
+    }
+
+    private BookFileType resolveBookType(String requestedType, BookEntity book) {
+        if (requestedType != null && !requestedType.isBlank()) {
+            try {
+                return BookFileType.valueOf(requestedType.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw ApiError.GENERIC_BAD_REQUEST.createException("Invalid bookType: " + requestedType);
+            }
+        }
+        BookFileEntity primary = book.getPrimaryBookFile();
+        if (primary != null && primary.getBookType() != null) {
+            return primary.getBookType();
+        }
+        throw ApiError.GENERIC_BAD_REQUEST.createException("bookType is required when the book has no primary file");
+    }
+
+    private String resolveBookHash(String requestedHash, BookEntity book) {
+        if (requestedHash != null && !requestedHash.isBlank()) {
+            return requestedHash.trim();
+        }
+        BookFileEntity primary = book.getPrimaryBookFile();
+        if (primary != null) {
+            if (primary.getCurrentHash() != null && !primary.getCurrentHash().isBlank()) {
+                return primary.getCurrentHash();
+            }
+            if (primary.getInitialHash() != null && !primary.getInitialHash().isBlank()) {
+                return primary.getInitialHash();
+            }
+        }
+        return String.valueOf(book.getId());
+    }
+
+    private String resolveDevice(String requested, String fallback) {
+        if (requested != null && !requested.isBlank()) {
+            return requested.trim();
+        }
+        if (fallback != null && !fallback.isBlank()) {
+            return fallback.trim();
+        }
+        return null;
+    }
+
+    private String resolveDeviceId(String requested, String fallback) {
+        if (requested != null && !requested.isBlank()) {
+            return requested.trim();
+        }
+        if (fallback != null && !fallback.isBlank()) {
+            return fallback.trim();
+        }
+        return null;
     }
 
     public List<ReadingSessionHeatmapResponse> getSessionHeatmapForYear(int year) {
@@ -303,16 +416,22 @@ public class ReadingSessionService {
         return sessions.map(session -> ReadingSessionResponse.builder()
                 .id(session.getId())
                 .bookId(session.getBook().getId())
+                .bookHash(session.getBookHash())
                 .bookTitle(session.getBook().getMetadata().getTitle())
-                .bookType(session.getBookType())
+                .bookType(session.getBookType() != null ? session.getBookType().name() : null)
                 .startTime(session.getStartTime())
                 .endTime(session.getEndTime())
                 .durationSeconds(session.getDurationSeconds())
+                .durationFormatted(session.getDurationFormatted())
                 .startProgress(session.getStartProgress())
                 .endProgress(session.getEndProgress())
                 .progressDelta(session.getProgressDelta())
                 .startLocation(session.getStartLocation())
                 .endLocation(session.getEndLocation())
+                .currentPage(session.getCurrentPage())
+                .totalPages(session.getTotalPages())
+                .device(session.getDevice())
+                .deviceId(session.getDeviceId())
                 .createdAt(session.getCreatedAt())
                 .build());
     }

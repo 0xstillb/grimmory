@@ -239,7 +239,7 @@ public class SecurityConfig {
 
     @Bean
     @Order(9)
-    public SecurityFilterChain jwtApiSecurityChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain jwtApiSecurityChain(HttpSecurity http, KoreaderAuthFilter koreaderAuthFilter) throws Exception {
         var parser = new PathPatternParser();
         final List<PathPattern> matchPatterns = Stream.of(
                 "/api/**",
@@ -283,6 +283,7 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(koreaderAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(authenticationCheckFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

@@ -1,6 +1,5 @@
 package org.booklore.model.dto.request;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -12,32 +11,18 @@ import java.time.Instant;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ReadingSessionRequest {
-    @NotNull
-    private Long bookId;
+public class ReadingSessionItemRequest {
 
-    @Size(max = 128)
-    private String bookHash;
-
-    @Size(max = 32)
-    private String bookType;
-
-    @Size(max = 100)
-    private String device;
-
-    @JsonAlias("device_id")
-    @Size(max = 255)
-    private String deviceId;
-
-    @NotNull
+    @NotNull(message = "Start time is required")
     private Instant startTime;
 
-    @NotNull
+    @NotNull(message = "End time is required")
     private Instant endTime;
 
-    @NotNull
+    @NotNull(message = "Duration is required")
     private Integer durationSeconds;
 
+    @Size(max = 50, message = "Duration formatted must not exceed 50 characters")
     private String durationFormatted;
 
     private Float startProgress;
@@ -46,8 +31,10 @@ public class ReadingSessionRequest {
 
     private Float progressDelta;
 
+    @Size(max = 500, message = "Start location must not exceed 500 characters")
     private String startLocation;
 
+    @Size(max = 500, message = "End location must not exceed 500 characters")
     private String endLocation;
 
     private Integer currentPage;
