@@ -54,6 +54,9 @@ public class KoreaderWebReaderBridgeService {
                 .findByUserIdAndBookId(context.reader().getId(), bookId)
                 .orElse(null);
         BookFileEntity bridgeFile = resolveProgressBridgeFile(context, progress, fileProgress, nativeProgress);
+        if (bridgeFile != null && !isSupportedBridgeFile(bridgeFile)) {
+            bridgeFile = findFallbackBridgeBookFile(context.book()).orElse(null);
+        }
         if (bridgeFile != null) {
             KoreaderProgressEntity exactNativeProgress = koreaderProgressRepository
                     .findByUserIdAndBookFileId(context.reader().getId(), bridgeFile.getId())
@@ -61,6 +64,11 @@ public class KoreaderWebReaderBridgeService {
             if (exactNativeProgress != null) {
                 nativeProgress = exactNativeProgress;
             }
+        } else {
+            log.info("GrimmLink web reader bridge disabled for unsupported book format bookId={} userId={}",
+                    bookId, context.reader().getId());
+            return buildResponse(context, null, null, null, null, null, false, false,
+                    "unsupported_format", "The web reader bridge is disabled for EPUB-like files.");
         }
 
         KoreaderWebProgressResponse response = buildResponse(context, bridgeFile, progress, fileProgress, nativeProgress, null, false, false, null, null);
@@ -86,6 +94,10 @@ public class KoreaderWebReaderBridgeService {
         BridgeContext context = loadContext(bookId);
         BridgeFileSelection bridgeSelection = resolveBridgeFile(context.book(), request.getBookFileId(), request.getBookHash(), request.getFileFormat());
         if (bridgeSelection.failureStatus() != null) {
+            if ("unsupported_format".equals(bridgeSelection.failureStatus())) {
+                return buildResponse(context, null, null, null, null, null, false, false,
+                        bridgeSelection.failureStatus(), bridgeSelection.failureReason());
+            }
             return buildResponse(context, bridgeSelection.file(), null, null, null, request, false, false,
                     bridgeSelection.failureStatus(), bridgeSelection.failureReason());
         }
@@ -387,11 +399,7 @@ public class KoreaderWebReaderBridgeService {
     }
 
     private boolean isSupportedBridgeFile(BookFileType type) {
-        return type == BookFileType.EPUB
-                || type == BookFileType.FB2
-                || type == BookFileType.MOBI
-                || type == BookFileType.AZW3
-                || type == BookFileType.PDF;
+        return type == BookFileType.PDF;
     }
 
     private boolean isPdfBridgeFile(BookFileEntity bookFile) {
