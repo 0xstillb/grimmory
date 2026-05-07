@@ -58,6 +58,32 @@ public class EpubCfiService {
         return convertXPointerToCfi(epubPath.toFile(), xpointer);
     }
 
+    public String convertProgressXPointerToCfi(File epubFile, String xpointer) {
+        if (xpointer == null || xpointer.isBlank()) {
+            return null;
+        }
+
+        try {
+            return convertXPointerToCfi(epubFile, xpointer);
+        } catch (Exception firstFailure) {
+            String normalized = CfiConverter.normalizeProgressXPointer(xpointer);
+            if (normalized == null || normalized.equals(xpointer)) {
+                throw firstFailure;
+            }
+
+            try {
+                return convertXPointerToCfi(epubFile, normalized);
+            } catch (Exception secondFailure) {
+                secondFailure.addSuppressed(firstFailure);
+                throw secondFailure;
+            }
+        }
+    }
+
+    public String convertProgressXPointerToCfi(Path epubPath, String xpointer) {
+        return convertProgressXPointerToCfi(epubPath.toFile(), xpointer);
+    }
+
     public String convertXPointerRangeToCfi(File epubFile, String startXPointer, String endXPointer) {
         int startSpineIndex = extractSpineIndex(startXPointer);
         int endSpineIndex = extractSpineIndex(endXPointer);

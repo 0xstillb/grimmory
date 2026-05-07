@@ -311,7 +311,7 @@ public class KoreaderWebReaderBridgeService {
         String rawXPointer = chooseRawXPointer(request.getRawKoreaderXPointer(), request.getRawKoreaderLocation());
         if (rawXPointer != null) {
             try {
-                String resolvedCfi = epubCfiService.convertXPointerToCfi(bridgePath, rawXPointer);
+                String resolvedCfi = epubCfiService.convertProgressXPointerToCfi(bridgePath, rawXPointer);
                 EpubCfiService.CfiLocation location = epubCfiService.resolveCfiLocation(bridgePath, resolvedCfi).orElse(null);
                 return KoreaderCfiResolveResponse.builder()
                         .bookId(bookId)

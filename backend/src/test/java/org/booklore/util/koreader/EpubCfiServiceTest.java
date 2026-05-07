@@ -157,6 +157,16 @@ class EpubCfiServiceTest {
             assertNotNull(cfi);
             assertTrue(cfi.contains("/6/4!"));
         }
+
+        @Test
+        void convertProgressXPointerToCfi_returnsCfi() {
+            String xpointer = "/body/DocFragment[1]/body/div[1]/p[1]/text().0";
+
+            String cfi = service.convertProgressXPointerToCfi(testEpubFile, xpointer);
+
+            assertNotNull(cfi);
+            assertTrue(cfi.startsWith("epubcfi("));
+        }
     }
 
     @Nested

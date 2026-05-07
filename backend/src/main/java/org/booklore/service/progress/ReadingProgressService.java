@@ -294,7 +294,7 @@ public class ReadingProgressService {
         }
 
         try {
-            String resolvedCfi = epubCfiService.convertXPointerToCfi(bridgePath, rawXPointer);
+            String resolvedCfi = epubCfiService.convertProgressXPointerToCfi(bridgePath, rawXPointer);
             if (!hasValidEpubCfi(resolvedCfi)) {
                 return null;
             }
