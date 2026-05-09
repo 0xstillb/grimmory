@@ -51,8 +51,8 @@ jobs:
             ${{ vars.DOCKERHUB_REGISTRY }}
             ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern=v{{version}},value=${{ github.event.release.tag_name }},match=^v(.+)$
-            type=semver,pattern=v{{major}}.{{minor}},value=${{ github.event.release.tag_name }},match=^v(.+)$
+            type=raw,value=latest
+            type=raw,value=${{ github.event.release.tag_name }}
 
       - name: Build and push Stable image
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
