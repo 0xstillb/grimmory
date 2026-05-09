@@ -6,20 +6,20 @@ GrimmLink is a KOReader companion backend providing book matching, reading progr
 
 ```
 KOReader Device                         Grimmory Backend
-┌──────────────┐    x-auth-user/key    ┌─────────────────────────────────┐
-│  KOReader    │ ──────────────────→   │  KoreaderAuthFilter             │
-│  (EPUB/PDF)  │    /api/koreader/**   │  ↓                              │
-└──────────────┘                       │  KoreaderController             │
-                                       │  KoreaderShelfController        │
-┌──────────────┐    JWT / session      │  KoreaderWebReaderBridgeController│
-│  Web Reader  │ ──────────────────→   │  ↓                              │
-│  (PDF only)  │    /api/koreader/**   │  KoreaderService                │
-└──────────────┘                       │  ↓                              │
-                                       │  KoreaderProgressEntity (primary)│
-┌──────────────┐    JWT                │  UserBookProgressEntity (legacy) │
-│  Grimmory UI │ ──────────────────→   │  ↓                              │
-│  (Settings)  │    /api/v1/koreader-* │  KoreaderUserController         │
-└──────────────┘                       └─────────────────────────────────┘
+┌──────────────┐    x-auth-user/key    ┌──────────────────────────────────────────┐
+│  KOReader    │ ──────────────────→   │  KoreaderAuthFilter                      │
+│  (EPUB/PDF)  │    /api/koreader/**   │  ↓                                       │
+└──────────────┘                       │  KoreaderController                      │
+                                       │  KoreaderShelfController                 │
+┌──────────────┐    JWT / session      │  KoreaderWebReaderBridgeController       │
+│  Web Reader  │ ──────────────────→   │  ↓                                       │
+│  (PDF only)  │    /api/koreader/**   │  KoreaderService                         │
+└──────────────┘                       │  ↓                                       │
+                                       │  KoreaderProgressEntity (primary)        │
+┌──────────────┐    JWT                │  UserBookProgressEntity (legacy)         │
+│  Grimmory UI │ ──────────────────→   │  ↓                                       │
+│  (Settings)  │    /api/v1/koreader-* │  KoreaderUserController                  │
+└──────────────┘                       └──────────────────────────────────────────┘
 ```
 
 ## New Files (Added)
