@@ -182,9 +182,10 @@ GrimmLink provides KOReader-compatible endpoints for book matching, progress syn
 
 ### Setup
 
-1. Go to **Settings > KOReader** in the Grimmory web UI
-2. Create a KOReader username and password
-3. Enable sync
+1. Go to **Settings > KOReader Sync Configuration** in the Grimmory web UI
+2. Set **KOReader Username** and **KOReader Password**
+3. Enable **KOReader Sync**
+4. Enable **Sync reading progress with Grimmory eBook Reader** for PDF Progress Bridge
 
 ### KOReader Configuration
 
