@@ -31,9 +31,21 @@ public class KoreaderAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
         String username = request.getHeader("x-auth-user");
         String key = request.getHeader("x-auth-key");
+        String path = request.getRequestURI();
+        boolean koreaderApi = path != null && path.startsWith("/api/koreader/");
+        boolean readingSessionUpload = "/api/v1/reading-sessions".equals(path) || "/api/v1/reading-sessions/batch".equals(path);
+
+        if (!koreaderApi && !readingSessionUpload) {
+            chain.doFilter(request, response);
+            return;
+        }
 
         if (username == null || key == null) {
-            log.info("Missing KOReader headers");
+            if (koreaderApi) {
+                log.info("Missing KOReader headers");
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "KOReader authentication required");
+                return;
+            }
             chain.doFilter(request, response);
             return;
         }
@@ -41,12 +53,20 @@ public class KoreaderAuthFilter extends OncePerRequestFilter {
         var user = koreaderUserRepository.findByUsername(username).orElse(null);
         if (user == null) {
             log.info("KOReader user not found");
+            if (koreaderApi || readingSessionUpload) {
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "KOReader user not found");
+                return;
+            }
             chain.doFilter(request, response);
             return;
         }
 
         if (!user.getPasswordMD5().equalsIgnoreCase(key)) {
             log.info("KOReader user password not match");
+            if (koreaderApi || readingSessionUpload) {
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid KOReader credentials");
+                return;
+            }
             chain.doFilter(request, response);
             return;
         }

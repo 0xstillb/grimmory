@@ -14,11 +14,13 @@ import org.booklore.model.dto.request.BookFileProgress;
 import org.booklore.model.dto.request.ReadProgressRequest;
 import org.booklore.model.dto.response.BookStatusUpdateResponse;
 import org.booklore.model.entity.*;
+import org.booklore.model.entity.koreader.KoreaderProgressEntity;
 import org.booklore.model.enums.BookFileType;
 import org.booklore.model.enums.ReadStatus;
 import org.booklore.model.enums.ResetProgressType;
 import org.booklore.model.enums.UserPermission;
 import org.booklore.repository.*;
+import org.booklore.repository.koreader.KoreaderProgressRepository;
 import org.booklore.service.hardcover.HardcoverSyncService;
 import org.booklore.service.kobo.KoboReadingStateService;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +50,7 @@ public class ReadingProgressService {
     private final AuthenticationService authenticationService;
     private final KoboReadingStateService koboReadingStateService;
     private final HardcoverSyncService hardcoverSyncService;
+    private final KoreaderProgressRepository koreaderProgressRepository;
 
     // ==================== Methods from UserProgressService ====================
 
@@ -204,6 +207,7 @@ public class ReadingProgressService {
         BookLoreUser user = authenticationService.getAuthenticatedUser();
         BookLoreUserEntity userEntity = findUserOrThrow(user.getId());
         Instant now = Instant.now();
+        BookFileEntity resolvedProgressFile = null;
 
         UserBookProgressEntity progress = userBookProgressRepository
                 .findByUserIdAndBookId(user.getId(), book.getId())
@@ -231,12 +235,14 @@ public class ReadingProgressService {
                 BookFileEntity bookFile = bookFileRepository.findById(fileProgress.bookFileId())
                         .orElseThrow(() -> ApiError.GENERIC_NOT_FOUND.createException("Book file not found"));
                 updateProgressFromFileProgress(progress, bookFile.getBookType(), fileProgress);
+                resolvedProgressFile = bookFile;
             } else {
                 BookFileEntity primaryFile = book.getPrimaryBookFile();
                 if (primaryFile == null) {
                     throw ApiError.UNSUPPORTED_BOOK_TYPE.createException();
                 }
                 percentage = updateProgressByBookType(progress, primaryFile.getBookType(), request);
+                resolvedProgressFile = primaryFile;
 
                 if (percentage != null) {
                     saveToUserBookFileProgressFromLegacy(userEntity, primaryFile, progress, now);
@@ -269,10 +275,78 @@ public class ReadingProgressService {
         }
 
         userBookProgressRepository.save(progress);
+        mirrorPdfProgressToKoreader(userEntity, book, resolvedProgressFile, progress, request, now);
 
         if (percentage != null) {
             hardcoverSyncService.syncProgressToHardcover(book.getId(), percentage, user.getId());
         }
+    }
+
+    private void mirrorPdfProgressToKoreader(BookLoreUserEntity userEntity,
+                                             BookEntity book,
+                                             BookFileEntity resolvedProgressFile,
+                                             UserBookProgressEntity progress,
+                                             ReadProgressRequest request,
+                                             Instant now) {
+        if (userEntity == null || book == null || progress == null) {
+            return;
+        }
+        if (userEntity.getKoreaderUser() == null || !userEntity.getKoreaderUser().isSyncWithBookloreReader()) {
+            return;
+        }
+
+        BookFileEntity targetFile = resolvedProgressFile != null ? resolvedProgressFile : book.getPrimaryBookFile();
+        if (targetFile == null || targetFile.getBookType() != BookFileType.PDF) {
+            return;
+        }
+
+        Integer currentPage = progress.getPdfProgress();
+        Float percentage = progress.getPdfProgressPercent();
+        if (currentPage == null && percentage == null) {
+            return;
+        }
+
+        KoreaderProgressEntity entity = koreaderProgressRepository
+                .findByUserIdAndBookFileId(userEntity.getId(), targetFile.getId())
+                .orElseGet(KoreaderProgressEntity::new);
+
+        entity.setUser(userEntity);
+        entity.setBook(book);
+        entity.setBookFile(targetFile);
+        entity.setBookHash(resolveBestBookHash(targetFile, book));
+        entity.setFileFormat("PDF");
+        entity.setProgress(currentPage != null ? String.valueOf(currentPage) : null);
+        entity.setLocation(resolvePdfLocation(request, currentPage));
+        entity.setPercentage(percentage);
+        entity.setCurrentPage(currentPage);
+        entity.setTotalPages(null);
+        entity.setDevice("WEB_READER");
+        entity.setDeviceId("web-reader");
+        entity.setClientTimestamp(now);
+
+        koreaderProgressRepository.save(entity);
+    }
+
+    private String resolvePdfLocation(ReadProgressRequest request, Integer currentPage) {
+        if (request != null && request.getFileProgress() != null) {
+            String href = request.getFileProgress().positionHref();
+            if (href != null && !href.isBlank()) {
+                return href;
+            }
+        }
+        return currentPage != null ? String.valueOf(currentPage) : null;
+    }
+
+    private String resolveBestBookHash(BookFileEntity bookFile, BookEntity book) {
+        if (bookFile != null) {
+            if (bookFile.getCurrentHash() != null && !bookFile.getCurrentHash().isBlank()) {
+                return bookFile.getCurrentHash();
+            }
+            if (bookFile.getInitialHash() != null && !bookFile.getInitialHash().isBlank()) {
+                return bookFile.getInitialHash();
+            }
+        }
+        return book != null && book.getId() != null ? String.valueOf(book.getId()) : "unknown";
     }
 
     @Transactional

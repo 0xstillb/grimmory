@@ -28,9 +28,18 @@ public class ReadingSessionEntity {
     @JoinColumn(name = "book_id", nullable = false)
     private BookEntity book;
 
+    @Column(name = "book_hash", length = 128)
+    private String bookHash;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "book_type", nullable = false)
     private BookFileType bookType;
+
+    @Column(name = "device", length = 100)
+    private String device;
+
+    @Column(name = "device_id", length = 255)
+    private String deviceId;
 
     @Column(name = "start_time", nullable = false)
     private Instant startTime;
@@ -58,6 +67,12 @@ public class ReadingSessionEntity {
 
     @Column(name = "end_location", length = 500)
     private String endLocation;
+
+    @Column(name = "current_page")
+    private Integer currentPage;
+
+    @Column(name = "total_pages")
+    private Integer totalPages;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

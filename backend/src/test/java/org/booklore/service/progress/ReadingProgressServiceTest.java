@@ -14,6 +14,7 @@ import org.booklore.model.enums.BookFileType;
 import org.booklore.model.enums.ReadStatus;
 import org.booklore.model.enums.ResetProgressType;
 import org.booklore.repository.*;
+import org.booklore.repository.koreader.KoreaderProgressRepository;
 import org.booklore.service.kobo.KoboReadingStateService;
 import org.booklore.service.hardcover.HardcoverSyncService;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,6 +47,8 @@ class ReadingProgressServiceTest {
     private KoboReadingStateService koboReadingStateService;
     @Mock
     private HardcoverSyncService hardcoverSyncService;
+    @Mock
+    private KoreaderProgressRepository koreaderProgressRepository;
 
     @InjectMocks
     private ReadingProgressService readingProgressService;
@@ -284,6 +287,54 @@ class ReadingProgressServiceTest {
         assertEquals(5, progress.getPdfProgress());
         assertEquals(ReadStatus.READING, progress.getReadStatus());
         assertEquals(50f, progress.getPdfProgressPercent());
+    }
+
+    @Test
+    void updateReadProgress_pdf_shouldMirrorToKoreaderWhenSyncWithReaderEnabled() {
+        long bookId = 1L;
+        BookEntity book = new BookEntity();
+        book.setId(bookId);
+        BookFileEntity primaryFile = new BookFileEntity();
+        primaryFile.setId(1L);
+        primaryFile.setBook(book);
+        primaryFile.setBookType(BookFileType.PDF);
+        primaryFile.setCurrentHash("pdf-current-hash");
+        book.setBookFiles(List.of(primaryFile));
+
+        BookLoreUser user = mock(BookLoreUser.class);
+        when(user.getId()).thenReturn(2L);
+        when(authenticationService.getAuthenticatedUser()).thenReturn(user);
+        when(bookRepository.findByIdWithBookFiles(bookId)).thenReturn(Optional.of(book));
+
+        BookLoreUserEntity userEntity = new BookLoreUserEntity();
+        userEntity.setId(2L);
+        KoreaderUserEntity koreaderUser = new KoreaderUserEntity();
+        koreaderUser.setSyncWithBookloreReader(true);
+        userEntity.setKoreaderUser(koreaderUser);
+        when(userRepository.findById(2L)).thenReturn(Optional.of(userEntity));
+
+        UserBookProgressEntity progress = new UserBookProgressEntity();
+        when(userBookProgressRepository.findByUserIdAndBookId(2L, bookId)).thenReturn(Optional.of(progress));
+        when(userBookFileProgressRepository.findByUserIdAndBookFileId(2L, 1L)).thenReturn(Optional.empty());
+        when(koreaderProgressRepository.findByUserIdAndBookFileId(2L, 1L)).thenReturn(Optional.empty());
+
+        ReadProgressRequest req = new ReadProgressRequest();
+        req.setBookId(bookId);
+        req.setPdfProgress(PdfProgress.builder().page(9).percentage(64.3f).build());
+
+        readingProgressService.updateReadProgress(req);
+
+        verify(koreaderProgressRepository).save(argThat(entity ->
+                entity.getUser() == userEntity
+                        && entity.getBook() == book
+                        && entity.getBookFile() == primaryFile
+                        && "pdf-current-hash".equals(entity.getBookHash())
+                        && "PDF".equals(entity.getFileFormat())
+                        && Integer.valueOf(9).equals(entity.getCurrentPage())
+                        && Float.valueOf(64.3f).equals(entity.getPercentage())
+                        && "WEB_READER".equals(entity.getDevice())
+                        && "web-reader".equals(entity.getDeviceId())
+                        && entity.getClientTimestamp() != null));
     }
 
     @Test
