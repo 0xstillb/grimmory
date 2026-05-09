@@ -12,18 +12,28 @@
 
 [![Release](https://img.shields.io/github/v/release/0xstillb/grimmory?color=818CF8&style=flat-square&logo=github)](https://github.com/0xstillb/grimmory/releases)
 [![License](https://img.shields.io/github/license/0xstillb/grimmory?color=fab005&style=flat-square)](LICENSE)
-[![Preview Image](https://img.shields.io/badge/Preview%20Image-GHCR-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/0xstillb/grimmory/pkgs/container/grimmory)
-[![Discord](https://img.shields.io/badge/Discord-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/9YJ7HB4n8T)
+[![Docker Image](https://img.shields.io/badge/Docker-GHCR-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/0xstillb/grimmory/pkgs/container/grimmory)
 
-[Documentation](https://grimmory.org/docs) · [Quick Start](docs/QUICKSTART.md) · [Discord](https://discord.gg/9YJ7HB4n8T) · [Fork Releases](https://github.com/0xstillb/grimmory/releases)
-
-<!-- ![Grimmory Demo](assets/demo.gif) -->
+[Documentation](https://grimmory.org/docs) · [Quick Start](#quick-start) · [Fork Releases](https://github.com/0xstillb/grimmory/releases)
 
 </div>
 
 ---
 
-## Features
+## Fork Features
+
+This fork extends upstream Grimmory with:
+
+| Feature | Description |
+| :--- | :--- |
+| **OPF Metadata Import** | Automatically extracts metadata from adjacent `.opf` files during library scans |
+| **GrimmLink** | KOReader companion backend — book matching by file hash, reading progress sync, shelf management |
+| **PDF Progress Bridge** | Mirrors web reader PDF progress into KOReader sync stream |
+| **OPDS Feeds** | Full OPDS catalog for device discovery and book downloads |
+
+---
+
+## Core Features
 
 | Feature | Description |
 | :--- | :--- |
@@ -48,41 +58,24 @@
 
 ## Quick Start
 
-> [!TIP]
-> For OIDC setup, advanced configuration, or upgrade guides, see the [full documentation](https://grimmory.org/docs/getting-started).
-
 Requirements: [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/).
 
-> [!IMPORTANT]
-> This fork publishes OPF-enabled preview builds to GitHub Container Registry at `ghcr.io/0xstillb/grimmory`.
-> The current moving tag is `opf-upstream`.
-> The current preview line follows upstream `v3.0.2`.
+### Docker Image Tags
 
-> [!TIP]
-> For fork-specific release notes, pinned image tags, and upgrade guidance, see [Releases.md](Releases.md).
+| Tag | Branch | Description |
+| :--- | :--- | :--- |
+| `latest` | main | Stable release, updated on each published release |
+| `v3.0.3-Grimmlink` | main | Pinned stable version |
+| `develop` | develop | Latest test build, updated on every push to develop |
+| `develop-YYYYMMDD-sha` | develop | Pinned test build for rollback |
 
-### Fork Preview Build
+```bash
+# Stable
+docker pull ghcr.io/0xstillb/grimmory:latest
 
-Use this if you want adjacent `.opf` metadata import from this fork without building locally.
-
-```yaml
-services:
-  grimmory:
-    image: ghcr.io/0xstillb/grimmory:opf-upstream
+# Test / feature preview
+docker pull ghcr.io/0xstillb/grimmory:develop
 ```
-
-If you prefer immutable installs, use the pinned tag from the latest fork release instead.
-
-<details>
-<summary><strong>Image Repositories</strong></summary>
-
-| Registry | Image |
-| --- | --- |
-| Docker Hub | `grimmory/grimmory` |
-| GitHub Container Registry | `ghcr.io/grimmory-tools/grimmory` |
-| This fork | `ghcr.io/0xstillb/grimmory` |
-
-</details>
 
 ### Step 1: Environment Configuration
 
@@ -114,34 +107,12 @@ MYSQL_DATABASE=grimmory
 
 ### Step 2: Docker Compose
 
-Stable images are published from semantic-release tags on `main` as `vX.Y.Z` plus `latest`. Nightly images are built from `develop` and tagged `nightly`.
-
-For this fork, OPF preview images are published from `codex/opf-support-upstream` and tagged as:
-
-- `ghcr.io/0xstillb/grimmory:opf-upstream`
-- `ghcr.io/0xstillb/grimmory:opf-upstream-<short-sha>`
-
-> [!NOTE]
-> Migrating from an existing Booklore container? You can keep your current service name, `container_name`, database name and user, ports, and mounted volumes the same. Replace only the `image:` line with `grimmory/grimmory:<tag>`, `ghcr.io/grimmory-tools/grimmory:<tag>`, or `ghcr.io/0xstillb/grimmory:opf-upstream`.
-
-```yaml
-services:
-  booklore:
-    image: ghcr.io/0xstillb/grimmory:opf-upstream
-```
-
-Create a `docker-compose.yml` or copy and adapt [`deploy/compose/docker-compose.yml`](deploy/compose/docker-compose.yml):
+Create a `docker-compose.yml`:
 
 ```yaml
 services:
   grimmory:
-    image: ghcr.io/0xstillb/grimmory:opf-upstream
-    # Convenience tag:
-    # image: grimmory/grimmory:<release-version>
-    # Alternative: ghcr.io/grimmory-tools/grimmory:<release-version>
-    # Fork preview: ghcr.io/0xstillb/grimmory:opf-upstream
-    # To build from source instead: comment out 'image' and uncomment below
-    # build: .
+    image: ghcr.io/0xstillb/grimmory:latest
     container_name: grimmory
     environment:
       - USER_ID=${APP_USER_ID}
@@ -205,32 +176,102 @@ Additional deployment examples:
 
 ---
 
-## Developer Surfaces
+## GrimmLink API
 
+GrimmLink provides KOReader-compatible endpoints for book matching, progress sync, and shelf management.
 
-Contributor workflow, PR policy, and release semantics live in [CONTRIBUTING.md](CONTRIBUTING.md). 
+### Setup
 
-General purpose development guidelines live in [DEVELOPMENT.md](DEVELOPMENT.md). Component-specific implementation guidance lives in:
+1. Go to **Settings > KOReader** in the Grimmory web UI
+2. Create a KOReader username and password
+3. Enable sync
 
-- [`backend/DEVELOPMENT.md`](backend/DEVELOPMENT.md)
-- [`frontend/DEVELOPMENT.md`](frontend/DEVELOPMENT.md)
+### KOReader Configuration
 
-The root [`Justfile`](Justfile) is the primary local command surface and mirrors the folder-local `backend/Justfile` and `frontend/Justfile` entrypoints.
+In KOReader, configure the sync server:
 
-```bash
-just               # Show root + api + ui recipes
-just test          # Run backend and frontend tests
-just api test      # Run backend tests only
-just ui dev        # Start the frontend dev server
 ```
+Server: http://<grimmory-host>:6060
+Username: <your koreader username>
+Password: <your koreader password>
+```
+
+### API Endpoints
+
+#### Authentication
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| GET | `/api/koreader/users/auth` | Authenticate KOReader user |
+
+Uses `x-auth-user` and `x-auth-key` (MD5) headers.
+
+#### Progress Sync
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| GET | `/api/koreader/syncs/progress/{bookHash}` | Get reading progress by file hash |
+| PUT | `/api/koreader/syncs/progress` | Update reading progress |
+
+#### PDF Progress Bridge
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| GET | `/api/koreader/books/{bookId}/pdf-progress` | Get PDF reading progress |
+| PUT | `/api/koreader/books/{bookId}/pdf-progress` | Update PDF reading progress |
+
+Web reader PDF progress is automatically mirrored to KOReader sync, so both clients stay in sync.
+
+#### Book Matching & Downloads
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| GET | `/api/koreader/books/by-hash/{bookHash}` | Find book by file hash |
+| GET | `/api/koreader/books/{bookId}/download` | Download book file |
+
+#### Shelf Management
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| GET | `/api/koreader/shelves` | List available shelves |
+| GET | `/api/koreader/shelves/{shelfId}/books` | List books in shelf |
+| POST | `/api/koreader/shelves/{shelfId}/books/{bookId}/remove` | Remove book from shelf |
+
+#### Reading Sessions
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| POST | `/api/v1/reading-sessions` | Log a reading session |
+| POST | `/api/v1/reading-sessions/batch` | Log batch of reading sessions |
+
+Accepts both Grimmory auth and KOReader `x-auth-user`/`x-auth-key` headers.
+
+---
+
+## OPDS Feeds
+
+OPDS catalog feeds are available for any OPDS-compatible reader app (KOReader, Librera, Moon+ Reader, etc.).
+
+| Path | Description |
+| :--- | :--- |
+| `/api/v1/opds` | Root catalog |
+| `/api/v1/opds/libraries` | Browse by library |
+| `/api/v1/opds/shelves` | Browse by shelf |
+| `/api/v1/opds/authors` | Browse by author |
+| `/api/v1/opds/series` | Browse by series |
+| `/api/v1/opds/catalog` | Full book catalog |
+| `/api/v1/opds/recent` | Recently added books |
+| `/api/v1/opds/{bookId}/download` | Download book |
+| `/api/v1/opds/{bookId}/cover` | Book cover image |
 
 ---
 
 ## API Reference Docs
 
-When enabled via `API_DOCS_ENABLED`, API reference documentation is available as both an `openapi.json` and as publicly accessible docs. The endpoints are:
-- API reference docs are available at `http://localhost:6060/api/docs`
-- OpenAPI JSON is available at `http://localhost:6060/api/openapi.json`
+When enabled via `API_DOCS_ENABLED=true`, full API documentation is available:
+
+- API reference docs: `http://localhost:6060/api/docs`
+- OpenAPI JSON: `http://localhost:6060/api/openapi.json`
 
 ---
 
@@ -269,19 +310,34 @@ All other features — reading, metadata, sync — remain fully functional.
 
 ---
 
+## Developer Surfaces
+
+Contributor workflow, PR policy, and release semantics live in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+General purpose development guidelines live in [DEVELOPMENT.md](DEVELOPMENT.md). Component-specific implementation guidance lives in:
+
+- [`backend/DEVELOPMENT.md`](backend/DEVELOPMENT.md)
+- [`frontend/DEVELOPMENT.md`](frontend/DEVELOPMENT.md)
+
+The root [`Justfile`](Justfile) is the primary local command surface and mirrors the folder-local `backend/Justfile` and `frontend/Justfile` entrypoints.
+
+```bash
+just               # Show root + api + ui recipes
+just test          # Run backend and frontend tests
+just api test      # Run backend tests only
+just ui dev        # Start the frontend dev server
+```
+
+---
+
 ## Community and Support
 
 | Channel | |
 | :--- | :--- |
-| Report a bug | [Open an issue](https://github.com/grimmory-tools/grimmory/issues/new?template=bug_report.yml) |
-| Request a feature | [Open an issue](https://github.com/grimmory-tools/grimmory/issues/new?template=feature_request.yml) |
-| Contribute | [Contributing Guide](CONTRIBUTING.md) |
-| Join the discussion | [Discord Server](https://discord.gg/9YJ7HB4n8T) |
+| Report a bug | [Open an issue](https://github.com/0xstillb/grimmory/issues) |
+| Upstream project | [grimmory-tools/grimmory](https://github.com/grimmory-tools/grimmory) |
 
-> [!WARNING]
-> Before opening a pull request, open an issue first and get maintainer approval. Pull requests without a linked issue, without screenshots or video proof, or without pasted test output will be closed. All code must follow the project [backend](CONTRIBUTING.md#backend-conventions) and [frontend](CONTRIBUTING.md#frontend-conventions) conventions. AI-assisted contributions are welcome, but you must run, test, and understand every line you submit. See the [Contributing Guide](CONTRIBUTING.md) for full details.
-
---- 
+---
 
 ## License
 
