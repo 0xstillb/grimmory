@@ -1,5 +1,6 @@
 package org.booklore.repository;
 
+import org.booklore.repository.projection.BookEmbeddingProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
@@ -151,6 +152,10 @@ public interface BookRepository extends JpaRepository<BookEntity, Long>, JpaSpec
     @EntityGraph(attributePaths = {"metadata", "metadata.comicMetadata"})
     @Query("SELECT b FROM BookEntity b WHERE (b.deleted IS NULL OR b.deleted = false)")
     List<BookEntity> findAllFullBooks();
+
+    @EntityGraph(attributePaths = {"metadata", "metadata.comicMetadata", "library", "bookFiles"})
+    @Query("SELECT b FROM BookEntity b WHERE (b.deleted IS NULL OR b.deleted = false)")
+    List<BookEntity> findAllFullBooksWithFiles();
 
     @Query("SELECT b FROM BookEntity b WHERE (b.deleted IS NULL OR b.deleted = false) AND b.id > :afterId ORDER BY b.id")
     List<BookEntity> findBooksForMigrationBatch(@Param("afterId") long afterId, Pageable pageable);
@@ -526,6 +531,6 @@ public interface BookRepository extends JpaRepository<BookEntity, Long>, JpaSpec
             AND b.id <> :excludeBookId
             AND m.embeddingVector IS NOT NULL
             """)
-    List<org.booklore.repository.projection.BookEmbeddingProjection> findAllEmbeddingsForRecommendation(@Param("excludeBookId") Long excludeBookId);
+    List<BookEmbeddingProjection> findAllEmbeddingsForRecommendation(@Param("excludeBookId") Long excludeBookId);
 
 }

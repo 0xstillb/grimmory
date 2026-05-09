@@ -38,11 +38,6 @@
               },
               {
                 "glob": "**/*",
-                "input": "node_modules/ngx-extended-pdf-viewer/assets/",
-                "output": "/assets/"
-              },
-              {
-                "glob": "**/*",
                 "input": "libs/foliate-js",
                 "output": "/assets/foliate/"
               },
@@ -65,7 +60,6 @@
               "lodash",
               "quill-delta",
               "event-emitter",
-              "showdown",
               "@xmldom/xmldom",
               "path-webpack",
               "jszip/dist/jszip",

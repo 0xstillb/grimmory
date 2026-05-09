@@ -23,6 +23,10 @@
   "discard": "Discard",
   "review": "Review",
   "libraryPathInaccessible": "Library path inaccessible",
+  "decreaseCardSize": "Decrease card size",
+  "increaseCardSize": "Increase card size",
+  "cardSizeControls": "Card size controls",
   "on": "On",
-  "off": "Off"
+  "off": "Off",
+  "moreActionsFor": "More actions for {{label}}"
 }
