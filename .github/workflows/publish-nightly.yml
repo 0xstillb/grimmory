@@ -120,6 +120,7 @@ jobs:
             ${{ vars.DOCKERHUB_REGISTRY }}
             ghcr.io/${{ github.repository }}
           tags: |
+            type=raw,value=develop
             type=raw,value=nightly
             type=raw,value=${{ env.nightly_tag }}
 

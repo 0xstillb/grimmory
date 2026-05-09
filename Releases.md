@@ -23,31 +23,30 @@
 
 | Channel | Purpose | Image Tag | Notes |
 | :--- | :--- | :--- | :--- |
-| Stable upstream | Official tagged Grimmory release | `grimmory/grimmory:vX.Y.Z` | Best for general use if you do not need adjacent `.opf` support |
-| Nightly upstream | Latest upstream development build | `grimmory/grimmory:nightly` | Good for testing, but more likely to change frequently |
-| Fork preview | OPF-enabled preview build from this fork | `ghcr.io/0xstillb/grimmory:opf-upstream` | Recommended for this fork's adjacent `.opf` workflow |
-| Fork pinned preview | Immutable fork build tied to one commit | `ghcr.io/0xstillb/grimmory:opf-upstream-<short-sha>` | Best choice when you want reproducible installs |
+| Stable | Current stable build | `ghcr.io/0xstillb/grimmory:latest` | Best for general use |
+| Preview | Latest `develop` build | `ghcr.io/0xstillb/grimmory:develop` | Best for testing changes before a release |
 
 ---
 
 ## Current Fork Release
 
-### `v3.0.2-opf-preview.1`
+### `v3.0.3-Grimmlink`
 
-This prerelease is the current public preview line for the fork, rebased onto upstream `v3.0.2`.
+This release is the current public release line for the fork.
 
 **Release page**
-- [v3.0.2-opf-preview.1](https://github.com/0xstillb/grimmory/releases/tag/v3.0.2-opf-preview.1)
+- [v3.0.3-Grimmlink](https://github.com/0xstillb/grimmory/releases/tag/v3.0.3-Grimmlink)
 
 **Container images**
-- Moving tag: `ghcr.io/0xstillb/grimmory:opf-upstream`
-- Pinned tag: `ghcr.io/0xstillb/grimmory:opf-upstream-<short-sha>`
+- Stable moving tag: `ghcr.io/0xstillb/grimmory:latest`
+- Preview moving tag: `ghcr.io/0xstillb/grimmory:develop`
+- Pinned release tag: `ghcr.io/0xstillb/grimmory:v3.0.3-Grimmlink`
 
 **Why use this build**
 - Adjacent `.opf` metadata can be applied during import without patching upstream yourself
 - The fork changes were trimmed down to keep future upstream sync work cleaner
 - Release and image paths now point to the renamed GitHub owner `0xstillb`
-- The branch now tracks the upstream `v3.0.2` release line
+- The moving tags now point at `latest` for stable and `develop` for preview
 
 ---
 
@@ -70,14 +69,24 @@ This fork is intentionally narrow. It is meant to stay close to upstream Grimmor
 
 ## Install Paths
 
-### Fastest Option
+### Stable Option
 
-Use the moving preview tag:
+Use the stable moving tag:
 
 ```yaml
 services:
   grimmory:
-    image: ghcr.io/0xstillb/grimmory:opf-upstream
+    image: ghcr.io/0xstillb/grimmory:latest
+```
+
+### Preview Option
+
+Use the preview moving tag:
+
+```yaml
+services:
+  grimmory:
+    image: ghcr.io/0xstillb/grimmory:develop
 ```
 
 ### Reproducible Option
@@ -87,7 +96,7 @@ Use the pinned tag from the current release:
 ```yaml
 services:
   grimmory:
-    image: ghcr.io/0xstillb/grimmory:opf-upstream-<short-sha>
+    image: ghcr.io/0xstillb/grimmory:v3.0.3-Grimmlink
 ```
 
 ### Keep Existing Data
@@ -112,7 +121,7 @@ Before moving to a new preview image:
 3. Prefer pinned tags if you want exact reproducibility.
 4. Run the new image against the same volumes only after confirming the release note you want.
 
-If you are already on `ghcr.io/0xstillb/grimmory:opf-upstream`, pulling the latest image and recreating the container is enough for a normal preview upgrade.
+If you are already on `ghcr.io/0xstillb/grimmory:develop`, pulling the latest image and recreating the container is enough for a normal preview upgrade.
 
 ---
 

@@ -54,24 +54,34 @@
 Requirements: [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/).
 
 > [!IMPORTANT]
-> This fork publishes OPF-enabled preview builds to GitHub Container Registry at `ghcr.io/0xstillb/grimmory`.
-> The current moving tag is `opf-upstream`.
-> The current preview line follows upstream `v3.0.2`.
+> Pushes to `main` publish stable builds to GitHub Container Registry at `ghcr.io/0xstillb/grimmory:latest`.
+> Test and feature preview builds are published at `ghcr.io/0xstillb/grimmory:develop`.
+> Immutable release tags such as `v3.0.3-Grimmlink` are still available for pinned installs.
 
 > [!TIP]
 > For fork-specific release notes, pinned image tags, and upgrade guidance, see [Releases.md](Releases.md).
 
-### Fork Preview Build
+### Stable Build
 
-Use this if you want adjacent `.opf` metadata import from this fork without building locally.
+Use this if you want the stable moving image without building locally.
 
 ```yaml
 services:
   grimmory:
-    image: ghcr.io/0xstillb/grimmory:opf-upstream
+    image: ghcr.io/0xstillb/grimmory:latest
 ```
 
 If you prefer immutable installs, use the pinned tag from the latest fork release instead.
+
+### Test / Feature Preview
+
+Use this if you want the latest `develop` build from this fork.
+
+```yaml
+services:
+  grimmory:
+    image: ghcr.io/0xstillb/grimmory:develop
+```
 
 <details>
 <summary><strong>Image Repositories</strong></summary>
@@ -81,6 +91,8 @@ If you prefer immutable installs, use the pinned tag from the latest fork releas
 | Docker Hub | `grimmory/grimmory` |
 | GitHub Container Registry | `ghcr.io/grimmory-tools/grimmory` |
 | This fork | `ghcr.io/0xstillb/grimmory` |
+| Stable moving tag | `latest` |
+| Preview moving tag | `develop` |
 
 </details>
 
@@ -114,20 +126,20 @@ MYSQL_DATABASE=grimmory
 
 ### Step 2: Docker Compose
 
-Stable images are published from semantic-release tags on `main` as `vX.Y.Z` plus `latest`. Nightly images are built from `develop` and tagged `nightly`.
+Stable images are published from pushes to `main` as `latest`. Preview images are built from `develop` and tagged `develop`. Immutable release tags are still published from GitHub Releases.
 
-For this fork, OPF preview images are published from `codex/opf-support-upstream` and tagged as:
+For this fork, the moving tags you should use are:
 
-- `ghcr.io/0xstillb/grimmory:opf-upstream`
-- `ghcr.io/0xstillb/grimmory:opf-upstream-<short-sha>`
+- `ghcr.io/0xstillb/grimmory:latest`
+- `ghcr.io/0xstillb/grimmory:develop`
 
 > [!NOTE]
-> Migrating from an existing Booklore container? You can keep your current service name, `container_name`, database name and user, ports, and mounted volumes the same. Replace only the `image:` line with `grimmory/grimmory:<tag>`, `ghcr.io/grimmory-tools/grimmory:<tag>`, or `ghcr.io/0xstillb/grimmory:opf-upstream`.
+> Migrating from an existing Booklore container? You can keep your current service name, `container_name`, database name and user, ports, and mounted volumes the same. Replace only the `image:` line with `grimmory/grimmory:<tag>`, `ghcr.io/grimmory-tools/grimmory:<tag>`, `ghcr.io/0xstillb/grimmory:latest`, or `ghcr.io/0xstillb/grimmory:develop`.
 
 ```yaml
 services:
   booklore:
-    image: ghcr.io/0xstillb/grimmory:opf-upstream
+    image: ghcr.io/0xstillb/grimmory:latest
 ```
 
 Create a `docker-compose.yml` or copy and adapt [`deploy/compose/docker-compose.yml`](deploy/compose/docker-compose.yml):
@@ -135,11 +147,11 @@ Create a `docker-compose.yml` or copy and adapt [`deploy/compose/docker-compose.
 ```yaml
 services:
   grimmory:
-    image: ghcr.io/0xstillb/grimmory:opf-upstream
+    image: ghcr.io/0xstillb/grimmory:latest
     # Convenience tag:
     # image: grimmory/grimmory:<release-version>
     # Alternative: ghcr.io/grimmory-tools/grimmory:<release-version>
-    # Fork preview: ghcr.io/0xstillb/grimmory:opf-upstream
+    # Fork preview: ghcr.io/0xstillb/grimmory:develop
     # To build from source instead: comment out 'image' and uncomment below
     # build: .
     container_name: grimmory

@@ -92,12 +92,15 @@ That workflow will:
 - publish `ghcr.io/grimmory-tools/grimmory:latest`,
 - and flip the GitHub release from draft to published.
 
+Separately, every push to `main` also runs [`.github/workflows/publish-main-image.yml`](../.github/workflows/publish-main-image.yml) so `ghcr.io/0xstillb/grimmory:latest` always points at the current main branch head.
+
 ## Nightly Builds
 
 Nightly builds are separate from stable releases.
 
 They come from `develop` through [`.github/workflows/publish-nightly.yml`](../.github/workflows/publish-nightly.yml) and publish:
 
+- `develop`
 - `nightly`
 - `nightly-YYYYMMDD-<sha>`
 - `grimmory-openapi.json`
