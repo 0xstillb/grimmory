@@ -101,6 +101,33 @@ class KoreaderShelfServiceTest {
     }
 
     @Test
+    void listShelfBooks_includesSeriesMetadata() {
+        book.getMetadata().setSeriesName("Foundation");
+        book.getMetadata().setSeriesNumber(1.0f);
+        when(shelfRepository.findByIdWithUser(5L)).thenReturn(Optional.of(shelf));
+        when(bookRepository.findAllWithMetadataByShelfId(5L)).thenReturn(List.of(book));
+
+        List<KoreaderBookSummary> books = service.listShelfBooks(5L);
+
+        assertEquals(1, books.size());
+        assertEquals("Foundation", books.get(0).getSeriesName());
+        assertEquals(1.0f, books.get(0).getSeriesNumber());
+    }
+
+    @Test
+    void listShelfBooks_seriesFieldsNullWhenNoMetadata() {
+        book.setMetadata(null);
+        when(shelfRepository.findByIdWithUser(5L)).thenReturn(Optional.of(shelf));
+        when(bookRepository.findAllWithMetadataByShelfId(5L)).thenReturn(List.of(book));
+
+        List<KoreaderBookSummary> books = service.listShelfBooks(5L);
+
+        assertEquals(1, books.size());
+        assertNull(books.get(0).getSeriesName());
+        assertNull(books.get(0).getSeriesNumber());
+    }
+
+    @Test
     void downloadBook_delegatesAfterAccessCheck() {
         when(bookRepository.findByIdWithBookFiles(1L)).thenReturn(Optional.of(book));
         ResponseEntity<Resource> expected = ResponseEntity.ok(new ByteArrayResource(new byte[]{1, 2, 3}));

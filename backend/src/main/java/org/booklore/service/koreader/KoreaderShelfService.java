@@ -109,6 +109,8 @@ public class KoreaderShelfService {
                 .fileFormat(primaryFile != null && primaryFile.getBookType() != null ? primaryFile.getBookType().name() : null)
                 .fileSizeKb(primaryFile != null ? primaryFile.getFileSizeKb() : null)
                 .bookHash(resolveHash(primaryFile))
+                .seriesName(book.getMetadata() != null ? book.getMetadata().getSeriesName() : null)
+                .seriesNumber(book.getMetadata() != null ? book.getMetadata().getSeriesNumber() : null)
                 .build();
     }
 

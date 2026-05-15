@@ -19,4 +19,6 @@ public class KoreaderBookSummary {
     private String fileFormat;
     private Long fileSizeKb;
     private String bookHash;
+    private String seriesName;
+    private Float seriesNumber;
 }
