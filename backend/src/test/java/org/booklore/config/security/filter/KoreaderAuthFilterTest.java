@@ -61,11 +61,11 @@ class KoreaderAuthFilterTest {
     void invalidAuth_returnsUnauthorized() throws Exception {
         when(request.getRequestURI()).thenReturn("/api/koreader/books/by-hash/hash");
         when(request.getHeader("x-auth-user")).thenReturn("reader");
-        when(request.getHeader("x-auth-key")).thenReturn("wrong");
+        when(request.getHeader("x-auth-key")).thenReturn("0000000000000000000000000000dead");
 
         KoreaderUserEntity user = new KoreaderUserEntity();
         user.setUsername("reader");
-        user.setPasswordMD5("right");
+        user.setPasswordMD5("00000000000000000000000000000000");
         when(koreaderUserRepository.findByUsername("reader")).thenReturn(Optional.of(user));
 
         filter.doFilterInternal(request, response, filterChain);
@@ -78,13 +78,13 @@ class KoreaderAuthFilterTest {
     void validAuth_setsSecurityContextAndContinues() throws Exception {
         when(request.getRequestURI()).thenReturn("/api/v1/reading-sessions");
         when(request.getHeader("x-auth-user")).thenReturn("reader");
-        when(request.getHeader("x-auth-key")).thenReturn("md5");
+        when(request.getHeader("x-auth-key")).thenReturn("d41d8cd98f00b204e9800998ecf8427e");
 
         KoreaderUserEntity user = new KoreaderUserEntity();
         user.setUsername("reader");
-        user.setPasswordMD5("md5");
+        user.setPasswordMD5("d41d8cd98f00b204e9800998ecf8427e");
         user.setSyncEnabled(true);
-        user.setSyncWithBookloreReader(true);
+        user.setSyncWithWebReader(true);
         user.setBookLoreUser(BookLoreUserEntity.builder().id(42L).build());
         when(koreaderUserRepository.findByUsername("reader")).thenReturn(Optional.of(user));
 

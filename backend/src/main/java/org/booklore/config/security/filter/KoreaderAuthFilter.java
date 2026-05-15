@@ -17,6 +17,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -61,13 +63,18 @@ public class KoreaderAuthFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (!user.getPasswordMD5().equalsIgnoreCase(key)) {
-            log.info("KOReader user password not match");
-            if (koreaderApi || readingSessionUpload) {
+        try {
+            byte[] expectedMD5Bytes = HexFormat.of().parseHex(user.getPasswordMD5());
+            byte[] actualMD5Bytes = HexFormat.of().parseHex(key);
+
+            if (!MessageDigest.isEqual(expectedMD5Bytes, actualMD5Bytes)) {
+                log.info("KOReader user password not match");
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid KOReader credentials");
                 return;
             }
-            chain.doFilter(request, response);
+        } catch (IllegalArgumentException e) {
+            log.info("Problem comparing Koreader md5 checksums: {}", e.getMessage());
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid KOReader credentials");
             return;
         }
 
@@ -80,7 +87,7 @@ public class KoreaderAuthFilter extends OncePerRequestFilter {
                 user.getUsername(),
                 user.getPasswordMD5(),
                 user.isSyncEnabled(),
-                user.isSyncWithBookloreReader(),
+                user.isSyncWithWebReader(),
                 bookLoreUserId,
                 List.of(new SimpleGrantedAuthority("ROLE_USER"))
         );

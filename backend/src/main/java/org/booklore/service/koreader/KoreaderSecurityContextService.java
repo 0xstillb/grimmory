@@ -25,10 +25,10 @@ public class KoreaderSecurityContextService {
         Object principal = authentication.getPrincipal();
         if (principal instanceof BookLoreUser user) {
             BookLoreUserEntity userEntity = userRepository.findByIdWithDetails(user.getId()).orElse(null);
-            boolean syncWithBookloreReader = userEntity != null
+            boolean syncWithWebReader = userEntity != null
                     && userEntity.getKoreaderUser() != null
-                    && userEntity.getKoreaderUser().isSyncWithBookloreReader();
-            return new AuthenticatedReader(user.getId(), user.getUsername(), false, true, syncWithBookloreReader);
+                    && userEntity.getKoreaderUser().isSyncWithWebReader();
+            return new AuthenticatedReader(user.getId(), user.getUsername(), false, true, syncWithWebReader);
         }
 
         if (principal instanceof KoreaderUserDetails details) {
@@ -43,7 +43,7 @@ public class KoreaderSecurityContextService {
                     details.getUsername(),
                     true,
                     details.isSyncEnabled(),
-                    details.isSyncWithBookloreReader()
+                    details.isSyncWithWebReader()
             );
         }
 
@@ -61,7 +61,7 @@ public class KoreaderSecurityContextService {
             String username,
             boolean koreaderAuth,
             boolean syncEnabled,
-            boolean syncWithBookloreReader
+            boolean syncWithWebReader
     ) {
     }
 }

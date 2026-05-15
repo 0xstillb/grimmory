@@ -3,7 +3,7 @@ import {of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {TranslocoService} from '@jsverse/transloco';
 
-import {initializeLanguage, LANG_STORAGE_KEY, LEGACY_LANG_STORAGE_KEY} from './language-initializer';
+import {initializeLanguage, LANG_STORAGE_KEY} from './language-initializer';
 
 describe('initializeLanguage', () => {
   const translocoService = {
@@ -40,17 +40,6 @@ describe('initializeLanguage', () => {
     expect(translocoService.setActiveLang).toHaveBeenCalledWith('de');
     expect(translocoService.load).toHaveBeenCalledWith('de');
     expect(localStorage.getItem(LANG_STORAGE_KEY)).toBe('de');
-  });
-
-  it('migrates the legacy persisted language key', async () => {
-    localStorage.setItem(LEGACY_LANG_STORAGE_KEY, 'fr');
-
-    const initializer = TestBed.runInInjectionContext(() => initializeLanguage());
-
-    await TestBed.runInInjectionContext(() => initializer());
-
-    expect(translocoService.setActiveLang).toHaveBeenCalledWith('fr');
-    expect(localStorage.getItem(LANG_STORAGE_KEY)).toBe('fr');
   });
 
   it('prefers the exact browser locale when it is available', async () => {

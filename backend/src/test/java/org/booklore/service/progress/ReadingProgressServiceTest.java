@@ -309,7 +309,7 @@ class ReadingProgressServiceTest {
         BookLoreUserEntity userEntity = new BookLoreUserEntity();
         userEntity.setId(2L);
         KoreaderUserEntity koreaderUser = new KoreaderUserEntity();
-        koreaderUser.setSyncWithBookloreReader(true);
+        koreaderUser.setSyncWithWebReader(true);
         userEntity.setKoreaderUser(koreaderUser);
         when(userRepository.findById(2L)).thenReturn(Optional.of(userEntity));
 

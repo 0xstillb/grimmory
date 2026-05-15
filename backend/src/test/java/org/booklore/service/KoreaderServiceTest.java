@@ -103,7 +103,7 @@ class KoreaderServiceTest {
         authUser.setPasswordMD5("md5");
         authUser.setBookLoreUser(reader);
         authUser.setSyncEnabled(true);
-        authUser.setSyncWithBookloreReader(true);
+        authUser.setSyncWithWebReader(true);
 
         setKoreaderAuth("reader", "md5");
         when(koreaderUserRepository.findByUsername("reader")).thenReturn(Optional.of(authUser));
@@ -115,8 +115,7 @@ class KoreaderServiceTest {
         assertEquals("reader", resp.getBody().get("username"));
         assertEquals(42L, resp.getBody().get("userId"));
         assertEquals(Boolean.TRUE, resp.getBody().get("syncEnabled"));
-        assertEquals(Boolean.TRUE, resp.getBody().get("syncWithBookloreReader"));
-        assertEquals(Boolean.TRUE, resp.getBody().get("syncWithGrimmoryReader"));
+        assertEquals(Boolean.TRUE, resp.getBody().get("syncWithWebReader"));
     }
 
     @Test

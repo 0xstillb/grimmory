@@ -62,8 +62,7 @@ public class KoreaderService {
         response.put("username", koreaderUser.getUsername());
         response.put("userId", koreaderUser.getBookLoreUser().getId());
         response.put("syncEnabled", koreaderUser.isSyncEnabled());
-        response.put("syncWithBookloreReader", koreaderUser.isSyncWithBookloreReader());
-        response.put("syncWithGrimmoryReader", koreaderUser.isSyncWithBookloreReader());
+        response.put("syncWithWebReader", koreaderUser.isSyncWithWebReader());
         return ResponseEntity.ok(response);
     }
 
@@ -127,7 +126,7 @@ public class KoreaderService {
                 reader.getId());
     }
 
-        @Transactional(readOnly = true)
+    @Transactional(readOnly = true)
     public KoreaderProgress getPdfProgress(Long bookId) {
         BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
         BookEntity book = loadAccessibleBookById(bookId, reader);
@@ -136,7 +135,7 @@ public class KoreaderService {
         return mapProgress(book, pdfFile, nativeEntity, resolveBookHash(pdfFile), true, nativeEntity != null, false, null, null);
     }
 
-        @Transactional
+    @Transactional
     public KoreaderProgress updatePdfProgress(Long bookId, KoreaderProgress request) {
         BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
         BookEntity book = loadAccessibleBookById(bookId, reader);

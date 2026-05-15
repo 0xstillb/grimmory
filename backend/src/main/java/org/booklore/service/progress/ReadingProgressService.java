@@ -290,7 +290,7 @@ public class ReadingProgressService {
         if (userEntity == null || book == null || progress == null) {
             return;
         }
-        if (userEntity.getKoreaderUser() == null || !userEntity.getKoreaderUser().isSyncWithBookloreReader()) {
+        if (userEntity.getKoreaderUser() == null || !userEntity.getKoreaderUser().isSyncWithWebReader()) {
             return;
         }
 
