@@ -95,10 +95,29 @@ public class MagicShelfBookService {
             Specification<BookEntity> specification = ruleEvaluatorService.toSpecification(groupRule, userId);
             specification = specification.and(createLibraryFilterSpecification(access.user()));
 
-            Pageable pageable = PageRequest.of(0, limit);
-            Page<BookEntity> booksPage = bookRepository.findAll(specification, pageable);
-            List<BookEntity> filtered = contentRestrictionService.applyRestrictions(booksPage.getContent(), userId);
-            return filtered.stream().map(BookEntity::getId).toList();
+            int safeLimit = limit <= 0 ? 1000 : limit;
+            int pageNumber = 0;
+            int pageSize = Math.min(500, safeLimit);
+            List<Long> ids = new java.util.ArrayList<>();
+
+            while (ids.size() < safeLimit) {
+                int remaining = safeLimit - ids.size();
+                Pageable pageable = PageRequest.of(pageNumber, Math.min(pageSize, Math.max(1, remaining)));
+                Page<BookEntity> booksPage = bookRepository.findAll(specification, pageable);
+                List<BookEntity> filtered = contentRestrictionService.applyRestrictions(booksPage.getContent(), userId);
+                for (BookEntity entity : filtered) {
+                    ids.add(entity.getId());
+                    if (ids.size() >= safeLimit) {
+                        break;
+                    }
+                }
+                if (!booksPage.hasNext()) {
+                    break;
+                }
+                pageNumber++;
+            }
+
+            return ids;
         } catch (APIException e) {
             throw e;
         } catch (Exception e) {
