@@ -124,7 +124,13 @@ public class KoreaderShelfService {
             return List.of();
         }
 
-        List<BookEntity> books = bookRepository.findAllForSummaryByIds(bookIds);
+        List<BookEntity> books = new java.util.ArrayList<>();
+        final int chunkSize = 500;
+        for (int start = 0; start < bookIds.size(); start += chunkSize) {
+            int end = Math.min(bookIds.size(), start + chunkSize);
+            List<Long> chunk = bookIds.subList(start, end);
+            books.addAll(bookRepository.findAllForSummaryByIds(chunk));
+        }
         Map<Long, BookEntity> booksById = books.stream().collect(Collectors.toMap(BookEntity::getId, b -> b));
         List<KoreaderBookSummary> result = new java.util.ArrayList<>();
         for (Long bookId : bookIds) {

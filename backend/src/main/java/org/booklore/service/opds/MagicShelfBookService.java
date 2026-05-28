@@ -173,6 +173,11 @@ public class MagicShelfBookService {
             return (root, query, cb) -> cb.conjunction();
         }
 
+        if (user.getAssignedLibraries() == null || user.getAssignedLibraries().isEmpty()) {
+            // Reader has no assigned libraries; treat as no-access instead of throwing.
+            return (root, query, cb) -> cb.disjunction();
+        }
+
         Set<Long> userLibraryIds = user.getAssignedLibraries().stream()
                 .map(Library::getId)
                 .collect(Collectors.toSet());
