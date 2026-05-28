@@ -29,8 +29,10 @@ public class KoreaderShelfController {
     @Operation(summary = "List shelves", description = "List shelves available to the authenticated KOReader user.")
     @ApiResponse(responseCode = "200", description = "Shelves returned successfully")
     @GetMapping("/shelves")
-    public ResponseEntity<List<KoreaderShelfSummary>> listShelves() {
-        return ResponseEntity.ok(koreaderShelfService.listShelves());
+    public ResponseEntity<List<KoreaderShelfSummary>> listShelves(
+            @Parameter(description = "Optional shelf type filter: regular or magic")
+            @RequestParam(required = false) String type) {
+        return ResponseEntity.ok(koreaderShelfService.listShelves(type));
     }
 
     @Operation(summary = "List books in shelf", description = "List books in a specific shelf accessible to the authenticated KOReader user.")
@@ -41,7 +43,20 @@ public class KoreaderShelfController {
     })
     @GetMapping("/shelves/{shelfId}/books")
     public ResponseEntity<List<KoreaderBookSummary>> listShelfBooks(@Parameter(description = "ID of the shelf") @PathVariable Long shelfId) {
-        return ResponseEntity.ok(koreaderShelfService.listShelfBooks(shelfId));
+        return ResponseEntity.ok(koreaderShelfService.listShelfBooks("regular", shelfId));
+    }
+
+    @Operation(summary = "List books in shelf", description = "List books in a specific regular or magic shelf accessible to the authenticated KOReader user.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Books returned successfully"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "404", description = "Shelf not found")
+    })
+    @GetMapping("/shelves/{shelfType}/{shelfId}/books")
+    public ResponseEntity<List<KoreaderBookSummary>> listShelfBooksByType(
+            @Parameter(description = "Shelf type: regular or magic") @PathVariable String shelfType,
+            @Parameter(description = "ID of the shelf") @PathVariable Long shelfId) {
+        return ResponseEntity.ok(koreaderShelfService.listShelfBooks(shelfType, shelfId));
     }
 
     @Operation(summary = "Download book", description = "Download a book file for the authenticated KOReader user.")
@@ -65,6 +80,20 @@ public class KoreaderShelfController {
     public ResponseEntity<KoreaderShelfRemovalResponse> removeBookFromShelf(
             @Parameter(description = "ID of the shelf") @PathVariable Long shelfId,
             @Parameter(description = "ID of the book") @PathVariable Long bookId) {
-        return ResponseEntity.ok(koreaderShelfService.removeBookFromShelf(shelfId, bookId));
+        return ResponseEntity.ok(koreaderShelfService.removeBookFromShelf("regular", shelfId, bookId));
+    }
+
+    @Operation(summary = "Remove book from shelf", description = "Remove a book from a regular shelf, or return unsupported for a magic shelf.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Remove action handled"),
+            @ApiResponse(responseCode = "403", description = "Forbidden"),
+            @ApiResponse(responseCode = "404", description = "Shelf or book not found")
+    })
+    @PostMapping("/shelves/{shelfType}/{shelfId}/books/{bookId}/remove")
+    public ResponseEntity<KoreaderShelfRemovalResponse> removeBookFromShelfByType(
+            @Parameter(description = "Shelf type: regular or magic") @PathVariable String shelfType,
+            @Parameter(description = "ID of the shelf") @PathVariable Long shelfId,
+            @Parameter(description = "ID of the book") @PathVariable Long bookId) {
+        return ResponseEntity.ok(koreaderShelfService.removeBookFromShelf(shelfType, shelfId, bookId));
     }
 }

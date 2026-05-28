@@ -36,6 +36,13 @@
 
 This prerelease is the current public preview line for the fork, rebased onto upstream `v3.0.2`.
 
+### Upcoming (Unreleased) KOReader Metadata Sync
+
+- Added `POST /api/koreader/syncs/metadata` for upload-only KOReader metadata batches.
+- Supports rating, annotations/highlights with notes, and bookmarks in one request.
+- Sync direction is KOReader/GrimmLink -> Grimmory only (no pull-back to KOReader in this phase).
+- No deletion sync behavior is included in this phase.
+
 **Release page**
 - [v3.0.2-opf-preview.1](https://github.com/0xstillb/grimmory/releases/tag/v3.0.2-opf-preview.1)
 

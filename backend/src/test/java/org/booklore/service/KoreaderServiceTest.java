@@ -8,6 +8,7 @@ import org.booklore.model.dto.progress.KoreaderProgress;
 import org.booklore.model.entity.*;
 import org.booklore.model.entity.koreader.KoreaderProgressEntity;
 import org.booklore.model.enums.BookFileType;
+import org.booklore.model.enums.ReadStatus;
 import org.booklore.repository.BookRepository;
 import org.booklore.repository.KoreaderUserRepository;
 import org.booklore.repository.UserBookFileProgressRepository;
@@ -195,6 +196,174 @@ class KoreaderServiceTest {
         assertEquals("device-1", saved.getDeviceId());
         assertEquals(Instant.ofEpochSecond(123L), saved.getClientTimestamp());
         assertEquals("EPUB", saved.getFileFormat());
+
+        ArgumentCaptor<UserBookProgressEntity> progressCaptor = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(progressRepository, atLeastOnce()).save(progressCaptor.capture());
+        UserBookProgressEntity savedProgress = progressCaptor.getValue();
+        assertEquals(ReadStatus.READING, savedProgress.getReadStatus());
+        assertEquals(Instant.ofEpochSecond(123L), savedProgress.getLastReadTime());
+    }
+
+    @Test
+    void saveProgress_100Percent_setsReadAndDateFinished() {
+        BookFileEntity epubFile = new BookFileEntity();
+        epubFile.setId(11L);
+        epubFile.setBook(book);
+        epubFile.setBookType(BookFileType.EPUB);
+        epubFile.setCurrentHash("hash");
+        book.setBookFiles(List.of(epubFile));
+
+        KoreaderProgress request = KoreaderProgress.builder()
+                .bookHash("hash")
+                .bookId(1L)
+                .bookFileId(11L)
+                .fileFormat("EPUB")
+                .progress("chapter=done")
+                .percentage(1.0F)
+                .timestamp(222L)
+                .build();
+
+        when(bookRepository.findAllByBookHash("hash")).thenReturn(List.of(book));
+        when(progressRepository.findByUserIdAndBookId(42L, 1L)).thenReturn(Optional.empty());
+        when(fileProgressRepository.findByUserIdAndBookFileId(42L, 11L)).thenReturn(Optional.empty());
+
+        service.saveProgress(request);
+
+        ArgumentCaptor<UserBookProgressEntity> progressCaptor = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(progressRepository, atLeastOnce()).save(progressCaptor.capture());
+        UserBookProgressEntity savedProgress = progressCaptor.getValue();
+        assertEquals(ReadStatus.READ, savedProgress.getReadStatus());
+        assertNotNull(savedProgress.getDateFinished());
+    }
+
+    @Test
+    void saveProgress_0Percent_setsUnread() {
+        BookFileEntity epubFile = new BookFileEntity();
+        epubFile.setId(11L);
+        epubFile.setBook(book);
+        epubFile.setBookType(BookFileType.EPUB);
+        epubFile.setCurrentHash("hash");
+        book.setBookFiles(List.of(epubFile));
+
+        KoreaderProgress request = KoreaderProgress.builder()
+                .bookHash("hash")
+                .bookId(1L)
+                .bookFileId(11L)
+                .fileFormat("EPUB")
+                .percentage(0.0F)
+                .timestamp(333L)
+                .build();
+
+        when(bookRepository.findAllByBookHash("hash")).thenReturn(List.of(book));
+        when(progressRepository.findByUserIdAndBookId(42L, 1L)).thenReturn(Optional.empty());
+        when(fileProgressRepository.findByUserIdAndBookFileId(42L, 11L)).thenReturn(Optional.empty());
+
+        service.saveProgress(request);
+
+        ArgumentCaptor<UserBookProgressEntity> progressCaptor = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(progressRepository, atLeastOnce()).save(progressCaptor.capture());
+        assertEquals(ReadStatus.UNREAD, progressCaptor.getValue().getReadStatus());
+    }
+
+    @Test
+    void saveProgress_largeBookThreePages_setsReadingEvenWhenPercentBelowOne() {
+        BookFileEntity epubFile = new BookFileEntity();
+        epubFile.setId(11L);
+        epubFile.setBook(book);
+        epubFile.setBookType(BookFileType.EPUB);
+        epubFile.setCurrentHash("hash");
+        book.setBookFiles(List.of(epubFile));
+
+        KoreaderProgress request = KoreaderProgress.builder()
+                .bookHash("hash")
+                .bookId(1L)
+                .bookFileId(11L)
+                .fileFormat("EPUB")
+                .percentage(0.00075F)
+                .currentPage(3)
+                .totalPages(4000)
+                .timestamp(335L)
+                .build();
+
+        when(bookRepository.findAllByBookHash("hash")).thenReturn(List.of(book));
+        when(progressRepository.findByUserIdAndBookId(42L, 1L)).thenReturn(Optional.empty());
+        when(fileProgressRepository.findByUserIdAndBookFileId(42L, 11L)).thenReturn(Optional.empty());
+
+        service.saveProgress(request);
+
+        ArgumentCaptor<UserBookProgressEntity> progressCaptor = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(progressRepository, atLeastOnce()).save(progressCaptor.capture());
+        assertEquals(ReadStatus.READING, progressCaptor.getValue().getReadStatus());
+    }
+
+    @Test
+    void saveProgress_preservesManualReadStatusWhenManualChangeIsNewerThanKoreaderSync() {
+        BookFileEntity epubFile = new BookFileEntity();
+        epubFile.setId(11L);
+        epubFile.setBook(book);
+        epubFile.setBookType(BookFileType.EPUB);
+        epubFile.setCurrentHash("hash");
+        book.setBookFiles(List.of(epubFile));
+
+        UserBookProgressEntity existingProgress = new UserBookProgressEntity();
+        existingProgress.setUser(reader);
+        existingProgress.setBook(book);
+        existingProgress.setReadStatus(ReadStatus.READ);
+        existingProgress.setReadStatusModifiedTime(Instant.parse("2026-05-26T12:00:00Z"));
+        existingProgress.setKoreaderLastSyncTime(Instant.parse("2026-05-25T12:00:00Z"));
+
+        KoreaderProgress request = KoreaderProgress.builder()
+                .bookHash("hash")
+                .bookId(1L)
+                .bookFileId(11L)
+                .fileFormat("EPUB")
+                .percentage(0.5F)
+                .timestamp(444L)
+                .build();
+
+        when(bookRepository.findAllByBookHash("hash")).thenReturn(List.of(book));
+        when(progressRepository.findByUserIdAndBookId(42L, 1L)).thenReturn(Optional.of(existingProgress));
+        when(fileProgressRepository.findByUserIdAndBookFileId(42L, 11L)).thenReturn(Optional.empty());
+
+        service.saveProgress(request);
+
+        ArgumentCaptor<UserBookProgressEntity> progressCaptor = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(progressRepository, atLeastOnce()).save(progressCaptor.capture());
+        assertEquals(ReadStatus.READ, progressCaptor.getValue().getReadStatus());
+    }
+
+    @Test
+    void saveProgress_nullPercentage_doesNotDeriveOrOverrideReadStatus() {
+        BookFileEntity epubFile = new BookFileEntity();
+        epubFile.setId(11L);
+        epubFile.setBook(book);
+        epubFile.setBookType(BookFileType.EPUB);
+        epubFile.setCurrentHash("hash");
+        book.setBookFiles(List.of(epubFile));
+
+        UserBookProgressEntity existingProgress = new UserBookProgressEntity();
+        existingProgress.setUser(reader);
+        existingProgress.setBook(book);
+        existingProgress.setReadStatus(ReadStatus.READING);
+
+        KoreaderProgress request = KoreaderProgress.builder()
+                .bookHash("hash")
+                .bookId(1L)
+                .bookFileId(11L)
+                .fileFormat("EPUB")
+                .progress("chapter=2")
+                .timestamp(555L)
+                .build();
+
+        when(bookRepository.findAllByBookHash("hash")).thenReturn(List.of(book));
+        when(progressRepository.findByUserIdAndBookId(42L, 1L)).thenReturn(Optional.of(existingProgress));
+        when(fileProgressRepository.findByUserIdAndBookFileId(42L, 11L)).thenReturn(Optional.empty());
+
+        service.saveProgress(request);
+
+        ArgumentCaptor<UserBookProgressEntity> progressCaptor = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(progressRepository, atLeastOnce()).save(progressCaptor.capture());
+        assertEquals(ReadStatus.READING, progressCaptor.getValue().getReadStatus());
     }
 
     @Test
@@ -388,6 +557,29 @@ class KoreaderServiceTest {
     }
 
     @Test
+    void updatePdfProgress_setsReadStatusFromPercentageForPdfBridge() {
+        KoreaderProgress request = KoreaderProgress.builder()
+                .bookHash("hash")
+                .bookFileId(10L)
+                .fileFormat("PDF")
+                .currentPage(10)
+                .percentage(50.0F)
+                .timestamp(500L)
+                .build();
+
+        when(bookRepository.findByIdWithBookFiles(1L)).thenReturn(Optional.of(book));
+        when(koreaderProgressRepository.findByUserIdAndBookFileId(42L, 10L)).thenReturn(Optional.empty());
+        when(progressRepository.findByUserIdAndBookId(42L, 1L)).thenReturn(Optional.empty());
+        when(fileProgressRepository.findByUserIdAndBookFileId(42L, 10L)).thenReturn(Optional.empty());
+
+        service.updatePdfProgress(1L, request);
+
+        ArgumentCaptor<UserBookProgressEntity> progressCaptor = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(progressRepository, atLeastOnce()).save(progressCaptor.capture());
+        assertEquals(ReadStatus.READING, progressCaptor.getValue().getReadStatus());
+    }
+
+    @Test
     void updatePdfProgress_rejectsUnsupportedFormat() {
         BookFileEntity epubFile = new BookFileEntity();
         epubFile.setId(10L);
@@ -409,6 +601,59 @@ class KoreaderServiceTest {
 
         APIException ex = assertThrows(APIException.class, () -> service.updatePdfProgress(1L, request));
         assertTrue(ex.getStatus().is4xxClientError());
+    }
+
+    @Test
+    void getSupportedReadStatuses_includesManualStatuses() {
+        List<String> statuses = service.getSupportedReadStatuses();
+
+        assertTrue(statuses.contains("UNREAD"));
+        assertTrue(statuses.contains("READING"));
+        assertTrue(statuses.contains("READ"));
+        assertTrue(statuses.contains("PAUSED"));
+        assertTrue(statuses.contains("ABANDONED"));
+        assertTrue(statuses.contains("RE_READING"));
+    }
+
+    @Test
+    void updateReadStatus_setsReadAndDateFinished() {
+        when(bookRepository.findByIdWithBookFiles(1L)).thenReturn(Optional.of(book));
+        when(progressRepository.findByUserIdAndBookId(42L, 1L)).thenReturn(Optional.empty());
+
+        Map<String, Object> result = service.updateReadStatus(1L, "READ");
+
+        assertEquals("ok", result.get("status"));
+        assertEquals("READ", result.get("readStatus"));
+        assertNotNull(result.get("dateFinished"));
+        ArgumentCaptor<UserBookProgressEntity> captor = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(progressRepository).save(captor.capture());
+        assertEquals(ReadStatus.READ, captor.getValue().getReadStatus());
+        assertNotNull(captor.getValue().getDateFinished());
+        assertNotNull(captor.getValue().getReadStatusModifiedTime());
+    }
+
+    @Test
+    void updateReadStatus_mapsOnHoldAliasToPaused() {
+        UserBookProgressEntity existing = new UserBookProgressEntity();
+        existing.setUser(reader);
+        existing.setBook(book);
+        when(bookRepository.findByIdWithBookFiles(1L)).thenReturn(Optional.of(book));
+        when(progressRepository.findByUserIdAndBookId(42L, 1L)).thenReturn(Optional.of(existing));
+
+        Map<String, Object> result = service.updateReadStatus(1L, "ON_HOLD");
+
+        assertEquals("PAUSED", result.get("readStatus"));
+        ArgumentCaptor<UserBookProgressEntity> captor = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(progressRepository).save(captor.capture());
+        assertEquals(ReadStatus.PAUSED, captor.getValue().getReadStatus());
+    }
+
+    @Test
+    void updateReadStatus_rejectsUnsupportedStatus() {
+        when(bookRepository.findByIdWithBookFiles(1L)).thenReturn(Optional.of(book));
+
+        APIException ex = assertThrows(APIException.class, () -> service.updateReadStatus(1L, "PARTIALLY_READ"));
+        assertEquals(400, ex.getStatus().value());
     }
 
     private void setKoreaderAuth(String username, String passwordMd5) {

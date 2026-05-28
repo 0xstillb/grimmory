@@ -1,6 +1,7 @@
 package org.booklore.controller;
 
 import org.booklore.model.dto.Book;
+import org.booklore.model.dto.koreader.KoreaderReadStatusRequest;
 import org.booklore.model.dto.progress.KoreaderProgress;
 import org.booklore.service.koreader.KoreaderService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.List;
 
 @Slf4j
 @RestController
@@ -64,5 +66,21 @@ public class KoreaderController {
     public ResponseEntity<?> updateProgress(@Parameter(description = "KoReader progress object") @Valid @RequestBody KoreaderProgress koreaderProgress) {
         koreaderService.saveProgress(koreaderProgress);
         return ResponseEntity.ok(Map.of("status", "progress updated"));
+    }
+
+    @Operation(summary = "Get supported manual read statuses", description = "Returns manual read status values supported by KOReader status endpoint.")
+    @ApiResponse(responseCode = "200", description = "Supported statuses returned successfully")
+    @GetMapping("/books/read-statuses")
+    public ResponseEntity<Map<String, List<String>>> getSupportedReadStatuses() {
+        return ResponseEntity.ok(Map.of("statuses", koreaderService.getSupportedReadStatuses()));
+    }
+
+    @Operation(summary = "Update manual read status", description = "Update read status for a book using KOReader authentication.")
+    @ApiResponse(responseCode = "200", description = "Read status updated successfully")
+    @PutMapping("/books/{bookId}/status")
+    public ResponseEntity<Map<String, Object>> updateReadStatus(
+            @Parameter(description = "Book id") @PathVariable Long bookId,
+            @RequestBody KoreaderReadStatusRequest request) {
+        return ResponseEntity.ok(koreaderService.updateReadStatus(bookId, request != null ? request.getStatus() : null));
     }
 }

@@ -43,6 +43,14 @@ Matches against `BookFileEntity.currentHash` first, then `initialHash`, while en
 
 This is the stable KOReader-to-KOReader resume path. It stores raw KOReader progress and location data without EPUB CFI conversion.
 
+### Manual Read Status
+
+- `GET /api/koreader/books/read-statuses`
+- `PUT /api/koreader/books/{bookId}/status`
+
+These endpoints support KOReader-side manual status updates while keeping auto-derived progress status logic intact.
+Supported manual statuses are intentionally scoped (`UNREAD`, `READING`, `READ`, `PAUSED`, `ABANDONED`, `RE_READING`).
+
 ### Reading Sessions
 
 - `POST /api/v1/reading-sessions`
@@ -65,12 +73,22 @@ The bridge is page-based only and rejects non-PDF formats.
 
 ### Shelves
 
-- `GET /api/koreader/shelves`
-- `GET /api/koreader/shelves/{shelfId}/books`
+- `GET /api/koreader/shelves` (returns regular + magic shelves, optional `?type=regular|magic`)
+- `GET /api/koreader/shelves/{shelfId}/books` (legacy regular shelf path)
+- `GET /api/koreader/shelves/{shelfType}/{shelfId}/books` (`shelfType` = `regular` or `magic`)
 - `GET /api/koreader/books/{bookId}/download`
-- `POST /api/koreader/shelves/{shelfId}/books/{bookId}/remove`
+- `POST /api/koreader/shelves/{shelfId}/books/{bookId}/remove` (legacy regular shelf path)
+- `POST /api/koreader/shelves/{shelfType}/{shelfId}/books/{bookId}/remove`
 
 Shelf removal only affects membership. It does not delete server files or book records.
+Magic shelves are rule-based; remove from magic shelf returns `unsupported` and does not change library files.
+
+### Metadata Batch Sync (Upload-Only)
+
+- `POST /api/koreader/syncs/metadata`
+
+This endpoint accepts KOReader companion metadata batches (rating, annotations, bookmarks) and returns per-item sync status.
+Metadata pull-back to KOReader and deletion sync semantics remain out of scope in this phase.
 
 ## Notes
 

@@ -234,9 +234,11 @@ Web reader PDF progress is automatically mirrored to KOReader sync, so both clie
 
 | Method | Path | Description |
 | :--- | :--- | :--- |
-| GET | `/api/koreader/shelves` | List available shelves |
+| GET | `/api/koreader/shelves` | List available shelves (regular + magic, optional `?type=regular|magic`) |
 | GET | `/api/koreader/shelves/{shelfId}/books` | List books in shelf |
+| GET | `/api/koreader/shelves/{shelfType}/{shelfId}/books` | List books in typed shelf (`regular` or `magic`) |
 | POST | `/api/koreader/shelves/{shelfId}/books/{bookId}/remove` | Remove book from shelf |
+| POST | `/api/koreader/shelves/{shelfType}/{shelfId}/books/{bookId}/remove` | Remove from typed shelf (`magic` returns unsupported; no file deletion) |
 
 #### Reading Sessions
 
