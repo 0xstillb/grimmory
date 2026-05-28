@@ -27,6 +27,7 @@ jobs:
       checks: write
     with:
       checkout_ref: ${{ github.sha }}
+      publish_test_results: false
       save_gradle_cache: true
 
   semantic-release:
