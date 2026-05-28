@@ -18,6 +18,7 @@ import org.grimmory.pdfium4j.PdfiumLibrary;
  */
 @Slf4j
 public final class NativeLibraries {
+    private static final String SKIP_EPUB_NATIVE_PROBE_PROPERTY = "booklore.native.epub4j.skipProbe";
 
     public enum Library {
         PDFIUM,
@@ -42,6 +43,9 @@ public final class NativeLibraries {
         probes.put(Library.LIBARCHIVE, new Probe("libarchive", Archive::isAvailable));
 
         probes.put(Library.EPUB4J_NATIVE, new Probe("epub4j-native", () -> {
+            if (Boolean.getBoolean(SKIP_EPUB_NATIVE_PROBE_PROPERTY)) {
+                return false;
+            }
             Boolean clean = tryInvokeStaticBoolean(
                     "org.grimmory.epub4j.native_parsing.EpubNativeLibrary"
             );

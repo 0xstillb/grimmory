@@ -3,8 +3,7 @@ package org.booklore.service.koreader;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import tools.jackson.databind.ObjectMapper;
 import org.booklore.model.dto.koreader.*;
 import org.booklore.model.entity.BookEntity;
 import org.booklore.model.entity.BookFileEntity;
@@ -61,7 +60,7 @@ class KoreaderMetadataServiceTest {
                 bookFileRepository,
                 userBookProgressRepository,
                 metadataItemRepository,
-                new ObjectMapper().registerModule(new JavaTimeModule())
+                new ObjectMapper()
         );
 
         library = new LibraryEntity();
