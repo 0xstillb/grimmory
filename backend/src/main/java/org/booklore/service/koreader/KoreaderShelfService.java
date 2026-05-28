@@ -2,6 +2,7 @@ package org.booklore.service.koreader;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.booklore.exception.APIException;
 import org.booklore.exception.ApiError;
 import org.booklore.model.dto.koreader.KoreaderBookSummary;
 import org.booklore.model.dto.koreader.KoreaderShelfRemovalResponse;
@@ -18,6 +19,7 @@ import org.booklore.repository.ShelfRepository;
 import org.booklore.service.book.BookDownloadService;
 import org.booklore.service.opds.MagicShelfBookService;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -119,27 +121,45 @@ public class KoreaderShelfService {
 
     private List<KoreaderBookSummary> listMagicShelfBooks(Long shelfId) {
         BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
-        List<Long> bookIds = magicShelfBookService.getBookIdsByMagicShelfId(reader.getId(), shelfId);
-        if (bookIds == null || bookIds.isEmpty()) {
-            return List.of();
-        }
-
-        List<BookEntity> books = new java.util.ArrayList<>();
-        final int chunkSize = 500;
-        for (int start = 0; start < bookIds.size(); start += chunkSize) {
-            int end = Math.min(bookIds.size(), start + chunkSize);
-            List<Long> chunk = bookIds.subList(start, end);
-            books.addAll(bookRepository.findAllForSummaryByIds(chunk));
-        }
-        Map<Long, BookEntity> booksById = books.stream().collect(Collectors.toMap(BookEntity::getId, b -> b));
-        List<KoreaderBookSummary> result = new java.util.ArrayList<>();
-        for (Long bookId : bookIds) {
-            BookEntity book = booksById.get(bookId);
-            if (book != null && canAccessBook(reader, book)) {
-                result.add(toBookSummary(book));
+        Long readerId = reader != null ? reader.getId() : null;
+        try {
+            List<Long> bookIds = magicShelfBookService.getBookIdsByMagicShelfId(readerId, shelfId);
+            if (bookIds == null || bookIds.isEmpty()) {
+                log.info("KOReader magic shelf: no books for userId={} shelfId={}", readerId, shelfId);
+                return List.of();
             }
+
+            List<Long> uniqueBookIds = bookIds.stream().distinct().toList();
+            log.info("KOReader magic shelf: resolved book IDs userId={} shelfId={} rawCount={} uniqueCount={}",
+                    readerId, shelfId, bookIds.size(), uniqueBookIds.size());
+
+            List<BookEntity> books = new java.util.ArrayList<>();
+            final int chunkSize = 500;
+            for (int start = 0; start < uniqueBookIds.size(); start += chunkSize) {
+                int end = Math.min(uniqueBookIds.size(), start + chunkSize);
+                List<Long> chunk = uniqueBookIds.subList(start, end);
+                books.addAll(bookRepository.findAllForSummaryByIds(chunk));
+            }
+            Map<Long, BookEntity> booksById = books.stream().collect(Collectors.toMap(BookEntity::getId, b -> b, (left, right) -> left));
+            List<KoreaderBookSummary> result = new java.util.ArrayList<>();
+            for (Long bookId : uniqueBookIds) {
+                BookEntity book = booksById.get(bookId);
+                if (book != null && canAccessBook(reader, book)) {
+                    result.add(toBookSummary(book));
+                }
+            }
+            log.info("KOReader magic shelf: returning summaries userId={} shelfId={} summaryCount={}",
+                    readerId, shelfId, result.size());
+            return result;
+        } catch (APIException e) {
+            throw e;
+        } catch (Exception ex) {
+            log.error("KOReader magic shelf failed userId={} shelfId={}: {}", readerId, shelfId, ex.getMessage(), ex);
+            throw new APIException(
+                    "Magic shelf query failed for shelfId=" + shelfId + " (" + ex.getClass().getSimpleName() + ")",
+                    HttpStatus.INTERNAL_SERVER_ERROR
+            );
         }
-        return result;
     }
 
     public ResponseEntity<Resource> downloadBook(Long bookId) {

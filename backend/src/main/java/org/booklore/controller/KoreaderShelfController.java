@@ -7,15 +7,18 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.booklore.exception.APIException;
 import org.booklore.model.dto.koreader.KoreaderBookSummary;
 import org.booklore.model.dto.koreader.KoreaderShelfRemovalResponse;
 import org.booklore.model.dto.koreader.KoreaderShelfSummary;
 import org.booklore.service.koreader.KoreaderShelfService;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @RestController
@@ -56,7 +59,23 @@ public class KoreaderShelfController {
     public ResponseEntity<List<KoreaderBookSummary>> listShelfBooksByType(
             @Parameter(description = "Shelf type: regular or magic") @PathVariable String shelfType,
             @Parameter(description = "ID of the shelf") @PathVariable Long shelfId) {
-        return ResponseEntity.ok(koreaderShelfService.listShelfBooks(shelfType, shelfId));
+        String debugId = newDebugId();
+        try {
+            return ResponseEntity.ok(koreaderShelfService.listShelfBooks(shelfType, shelfId));
+        } catch (APIException ex) {
+            // Keep original HTTP status while attaching a debug id for faster field troubleshooting.
+            log.error("KOReader shelf fetch failed debugId={} shelfType={} shelfId={} status={} message={}",
+                    debugId, shelfType, shelfId, ex.getStatus(), ex.getMessage(), ex);
+            throw new APIException(ex.getMessage() + " [debugId=" + debugId + "]", ex.getStatus());
+        } catch (Exception ex) {
+            String summary = summarizeException(ex);
+            log.error("KOReader shelf fetch crashed debugId={} shelfType={} shelfId={} cause={}",
+                    debugId, shelfType, shelfId, summary, ex);
+            throw new APIException(
+                    "Failed to fetch shelf books (debugId=" + debugId + "): " + summary,
+                    HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
     }
 
     @Operation(summary = "Download book", description = "Download a book file for the authenticated KOReader user.")
@@ -95,5 +114,21 @@ public class KoreaderShelfController {
             @Parameter(description = "ID of the shelf") @PathVariable Long shelfId,
             @Parameter(description = "ID of the book") @PathVariable Long bookId) {
         return ResponseEntity.ok(koreaderShelfService.removeBookFromShelf(shelfType, shelfId, bookId));
+    }
+
+    private static String newDebugId() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+    }
+
+    private static String summarizeException(Throwable throwable) {
+        if (throwable == null) {
+            return "unknown_error";
+        }
+        String type = throwable.getClass().getSimpleName();
+        String message = throwable.getMessage() == null ? "" : throwable.getMessage().replaceAll("\\s+", " ").trim();
+        if (message.length() > 220) {
+            message = message.substring(0, 220) + "...";
+        }
+        return message.isEmpty() ? type : (type + ": " + message);
     }
 }
