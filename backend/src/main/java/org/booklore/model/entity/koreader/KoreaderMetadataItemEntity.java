@@ -53,7 +53,7 @@ public class KoreaderMetadataItemEntity {
     @Column(name = "item_type", nullable = false, length = 32)
     private KoreaderMetadataItemType itemType;
 
-    @Column(name = "dedupe_key", nullable = false, length = 512)
+    @Column(name = "dedupe_key", nullable = false, length = 191)
     private String dedupeKey;
 
     @Enumerated(EnumType.STRING)
@@ -63,7 +63,7 @@ public class KoreaderMetadataItemEntity {
     @Column(name = "device", length = 100)
     private String device;
 
-    @Column(name = "device_id", length = 255)
+    @Column(name = "device_id", length = 191)
     private String deviceId;
 
     @Column(name = "original_rating_value")
@@ -78,10 +78,10 @@ public class KoreaderMetadataItemEntity {
     @Column(name = "annotation_type", length = 64)
     private String annotationType;
 
-    @Column(name = "text", length = 8000)
+    @Column(name = "text", columnDefinition = "TEXT")
     private String text;
 
-    @Column(name = "note", length = 8000)
+    @Column(name = "note", columnDefinition = "TEXT")
     private String note;
 
     @Column(name = "color", length = 64)
@@ -93,7 +93,7 @@ public class KoreaderMetadataItemEntity {
     @Column(name = "style", length = 64)
     private String style;
 
-    @Column(name = "chapter", length = 1024)
+    @Column(name = "chapter", columnDefinition = "TEXT")
     private String chapter;
 
     @Column(name = "page")
