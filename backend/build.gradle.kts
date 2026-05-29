@@ -262,6 +262,7 @@ tasks.named<Test>("test") {
     useJUnitPlatform()
     maxHeapSize = "2560m"
     jvmArgs("-XX:+EnableDynamicAgentLoading", "--enable-native-access=ALL-UNNAMED", "--enable-preview")
+    systemProperty("booklore.native.epub4j.skipProbe", "true")
     finalizedBy(tasks.named("jacocoTestReport"))
 }
 

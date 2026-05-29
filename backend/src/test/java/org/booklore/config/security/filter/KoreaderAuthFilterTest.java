@@ -58,6 +58,19 @@ class KoreaderAuthFilterTest {
     }
 
     @Test
+    void missingHeadersOnMetadataSync_returnsUnauthorized() throws Exception {
+        when(request.getRequestURI()).thenReturn("/api/koreader/syncs/metadata");
+        when(request.getHeader("x-auth-user")).thenReturn(null);
+        when(request.getHeader("x-auth-key")).thenReturn(null);
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(response).sendError(eq(HttpServletResponse.SC_UNAUTHORIZED), any(String.class));
+        verifyNoInteractions(koreaderUserRepository);
+        verifyNoInteractions(filterChain);
+    }
+
+    @Test
     void invalidAuth_returnsUnauthorized() throws Exception {
         when(request.getRequestURI()).thenReturn("/api/koreader/books/by-hash/hash");
         when(request.getHeader("x-auth-user")).thenReturn("reader");

@@ -11,11 +11,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class KoreaderShelfRemovalResponse {
-    private Long shelfId;
+public class MetadataSyncResponse {
     private Long bookId;
-    private String shelfType;
-    private boolean removed;
-    private String status;
-    private String message;
+    private boolean ok;
+    private MetadataSyncResults results;
 }

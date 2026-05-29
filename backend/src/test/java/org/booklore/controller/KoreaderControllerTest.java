@@ -1,6 +1,7 @@
 package org.booklore.controller;
 
 import org.booklore.model.dto.Book;
+import org.booklore.model.dto.koreader.KoreaderReadStatusRequest;
 import org.booklore.model.dto.progress.KoreaderProgress;
 import org.booklore.service.koreader.KoreaderService;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.doNothing;
@@ -85,5 +87,29 @@ class KoreaderControllerTest {
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertEquals("progress updated", ((Map<?, ?>) resp.getBody()).get("status"));
         verify(koreaderService).saveProgress(progress);
+    }
+
+    @Test
+    void getSupportedReadStatuses_returnsStatuses() {
+        when(koreaderService.getSupportedReadStatuses()).thenReturn(List.of("UNREAD", "READING", "READ"));
+
+        ResponseEntity<Map<String, List<String>>> resp = controller.getSupportedReadStatuses();
+
+        assertEquals(HttpStatus.OK, resp.getStatusCode());
+        assertEquals(List.of("UNREAD", "READING", "READ"), resp.getBody().get("statuses"));
+    }
+
+    @Test
+    void updateReadStatus_delegatesToService() {
+        KoreaderReadStatusRequest request = new KoreaderReadStatusRequest();
+        request.setStatus("READ");
+        Map<String, Object> expected = Map.of("status", "ok", "bookId", 10L, "readStatus", "READ");
+        when(koreaderService.updateReadStatus(10L, "READ")).thenReturn(expected);
+
+        ResponseEntity<Map<String, Object>> resp = controller.updateReadStatus(10L, request);
+
+        assertEquals(HttpStatus.OK, resp.getStatusCode());
+        assertEquals(expected, resp.getBody());
+        verify(koreaderService).updateReadStatus(10L, "READ");
     }
 }

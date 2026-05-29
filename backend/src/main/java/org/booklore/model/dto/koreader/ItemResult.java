@@ -11,11 +11,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class KoreaderShelfRemovalResponse {
-    private Long shelfId;
-    private Long bookId;
-    private String shelfType;
-    private boolean removed;
+public class ItemResult {
+    private String dedupeKey;
+    private String itemType;
     private String status;
-    private String message;
+    private String serverId;
+    private String error;
 }

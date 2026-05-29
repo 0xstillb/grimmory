@@ -1,6 +1,7 @@
 package org.booklore.exception;
 
 import jakarta.validation.ConstraintViolationException;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -15,13 +16,21 @@ import org.springframework.web.context.request.async.AsyncRequestNotUsableExcept
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(APIException.class)
-    public ResponseEntity<ErrorResponse> handleAPIException(APIException ex) {
+    public ResponseEntity<ErrorResponse> handleAPIException(APIException ex, HttpServletRequest request) {
+        String path = request != null ? request.getRequestURI() : "unknown";
+        String method = request != null ? request.getMethod() : "unknown";
+        if (ex.getStatus().is5xxServerError()) {
+            log.error("APIException {} {} -> status={} message={}", method, path, ex.getStatus(), ex.getMessage(), ex);
+        } else {
+            log.warn("APIException {} {} -> status={} message={}", method, path, ex.getStatus(), ex.getMessage());
+        }
         ErrorResponse errorResponse = new ErrorResponse(ex.getStatus().value(), ex.getMessage());
         return new ResponseEntity<>(errorResponse, ex.getStatus());
     }
@@ -114,9 +123,15 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
-        log.error("Unhandled exception: {}", ex.getMessage(), ex);
-        ErrorResponse errorResponse = new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "An unexpected error occurred.");
+    public ResponseEntity<ErrorResponse> handleGenericException(Exception ex, HttpServletRequest request) {
+        String debugId = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String path = request != null ? request.getRequestURI() : "unknown";
+        String method = request != null ? request.getMethod() : "unknown";
+        log.error("Unhandled exception debugId={} {} {}: {}", debugId, method, path, ex.getMessage(), ex);
+        ErrorResponse errorResponse = new ErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "An unexpected error occurred. debugId=" + debugId
+        );
         return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }

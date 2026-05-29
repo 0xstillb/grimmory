@@ -2,6 +2,7 @@ package org.booklore.app.service;
 
 import jakarta.persistence.EntityManager;
 import org.booklore.app.dto.UpdateProgressRequest;
+import org.booklore.app.dto.AppBookSummary;
 import org.booklore.app.mapper.AppBookMapper;
 import org.booklore.config.security.service.AuthenticationService;
 import org.booklore.exception.APIException;
@@ -11,6 +12,8 @@ import org.booklore.model.dto.request.BookFileProgress;
 import org.booklore.model.dto.request.ReadProgressRequest;
 import org.booklore.model.entity.BookEntity;
 import org.booklore.model.entity.LibraryEntity;
+import org.booklore.model.entity.UserBookProgressEntity;
+import org.springframework.data.domain.Pageable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -151,6 +154,31 @@ class AppBookServiceProgressTest {
 
         assertThrows(APIException.class, () -> service.updateBookProgress(bookId, request));
         verify(bookService, never()).updateReadProgress(any());
+    }
+
+    @Test
+    void getContinueReading_returnsMappedBookWhenEligibleProgressExists() {
+        mockNonAdminUser(Set.of(libraryId));
+
+        LibraryEntity library = LibraryEntity.builder().id(libraryId).build();
+        BookEntity bookEntity = BookEntity.builder().id(bookId).library(library).build();
+
+        UserBookProgressEntity progress = new UserBookProgressEntity();
+        progress.setBook(bookEntity);
+
+        AppBookSummary summary = AppBookSummary.builder().id(bookId).title("Continue Me").build();
+
+        when(userBookProgressRepository.findTopContinueReadingBookIds(eq(userId), eq(Set.of(libraryId)), any(Pageable.class)))
+                .thenReturn(List.of(bookId));
+        when(userBookProgressRepository.findByUserIdAndBookIdIn(userId, Set.of(bookId)))
+                .thenReturn(List.of(progress));
+        when(bookRepository.findAllById(List.of(bookId))).thenReturn(List.of(bookEntity));
+        when(mobileBookMapper.toSummary(bookEntity, progress)).thenReturn(summary);
+
+        List<AppBookSummary> result = service.getContinueReading(10);
+
+        assertEquals(1, result.size());
+        assertEquals(bookId, result.get(0).getId());
     }
 
     // -------------------------------------------------------------------------

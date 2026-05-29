@@ -7,8 +7,10 @@ import org.booklore.model.dto.koreader.KoreaderShelfSummary;
 import org.booklore.model.entity.*;
 import org.booklore.model.enums.BookFileType;
 import org.booklore.repository.BookRepository;
+import org.booklore.repository.MagicShelfRepository;
 import org.booklore.repository.ShelfRepository;
 import org.booklore.service.book.BookDownloadService;
+import org.booklore.service.opds.MagicShelfBookService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,6 +18,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
@@ -29,11 +33,14 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class KoreaderShelfServiceTest {
 
     @Mock private ShelfRepository shelfRepository;
+    @Mock private MagicShelfRepository magicShelfRepository;
     @Mock private BookRepository bookRepository;
     @Mock private BookDownloadService bookDownloadService;
+    @Mock private MagicShelfBookService magicShelfBookService;
     @Mock private KoreaderSecurityContextService securityContextService;
 
     @InjectMocks
@@ -80,12 +87,59 @@ class KoreaderShelfServiceTest {
     @Test
     void listShelves_returnsAccessibleShelves() {
         when(shelfRepository.findByUserIdOrPublicShelfTrue(42L)).thenReturn(List.of(shelf));
+        when(magicShelfRepository.findAllByUserId(42L)).thenReturn(List.of());
+        when(magicShelfRepository.findAllByIsPublicIsTrue()).thenReturn(List.of());
 
         List<KoreaderShelfSummary> shelves = service.listShelves();
 
         assertEquals(1, shelves.size());
         assertEquals("Sci-Fi", shelves.get(0).getName());
-        assertEquals("PUBLIC", shelves.get(0).getType());
+        assertEquals("regular", shelves.get(0).getType());
+        assertEquals("public", shelves.get(0).getVisibility());
+    }
+
+    @Test
+    void listShelves_includesMagicShelves() {
+        MagicShelfEntity magicShelf = MagicShelfEntity.builder()
+                .id(99L)
+                .userId(42L)
+                .name("Unread PDFs")
+                .isPublic(false)
+                .filterJson("{\"all\":true}")
+                .build();
+
+        when(shelfRepository.findByUserIdOrPublicShelfTrue(42L)).thenReturn(List.of(shelf));
+        when(magicShelfRepository.findAllByUserId(42L)).thenReturn(List.of(magicShelf));
+        when(magicShelfRepository.findAllByIsPublicIsTrue()).thenReturn(List.of());
+        when(magicShelfBookService.getBookIdsByMagicShelfId(42L, 99L)).thenReturn(List.of(1L, 2L));
+
+        List<KoreaderShelfSummary> shelves = service.listShelves();
+
+        assertEquals(2, shelves.size());
+        KoreaderShelfSummary magic = shelves.stream().filter(item -> "magic".equals(item.getType())).findFirst().orElse(null);
+        assertNotNull(magic);
+        assertEquals("Unread PDFs", magic.getName());
+        assertEquals(2, magic.getBookCount());
+    }
+
+    @Test
+    void listShelves_typeFilterMagicReturnsOnlyMagic() {
+        MagicShelfEntity magicShelf = MagicShelfEntity.builder()
+                .id(99L)
+                .userId(42L)
+                .name("Unread PDFs")
+                .isPublic(false)
+                .filterJson("{\"all\":true}")
+                .build();
+
+        when(magicShelfRepository.findAllByUserId(42L)).thenReturn(List.of(magicShelf));
+        when(magicShelfRepository.findAllByIsPublicIsTrue()).thenReturn(List.of());
+        when(magicShelfBookService.getBookIdsByMagicShelfId(42L, 99L)).thenReturn(List.of());
+
+        List<KoreaderShelfSummary> shelves = service.listShelves("magic");
+
+        assertEquals(1, shelves.size());
+        assertEquals("magic", shelves.get(0).getType());
     }
 
     @Test
@@ -98,6 +152,41 @@ class KoreaderShelfServiceTest {
         assertEquals(1, books.size());
         assertEquals("hash", books.get(0).getBookHash());
         assertEquals("title.pdf", books.get(0).getFileName());
+    }
+
+    @Test
+    void listShelfBooks_magicShelf_works() {
+        when(magicShelfBookService.getBookIdsByMagicShelfId(42L, 99L)).thenReturn(List.of(1L));
+        when(bookRepository.findAllForSummaryByIds(List.of(1L))).thenReturn(List.of(book));
+
+        List<KoreaderBookSummary> books = service.listShelfBooks("magic", 99L);
+
+        assertEquals(1, books.size());
+        assertEquals(1L, books.get(0).getBookId());
+        assertEquals(10L, books.get(0).getBookFileId());
+    }
+
+    @Test
+    void listShelfBooks_magicShelf_emptyReturnsEmptyList() {
+        when(magicShelfBookService.getBookIdsByMagicShelfId(42L, 99L)).thenReturn(List.of());
+
+        List<KoreaderBookSummary> books = service.listShelfBooks("magic", 99L);
+
+        assertTrue(books.isEmpty());
+    }
+
+    @Test
+    void listShelfBooks_regularForbidden_throws() {
+        BookLoreUserEntity otherUser = new BookLoreUserEntity();
+        otherUser.setId(1000L);
+        shelf.setUser(otherUser);
+        shelf.setPublic(false);
+
+        when(shelfRepository.findByIdWithUser(5L)).thenReturn(Optional.of(shelf));
+
+        APIException ex = assertThrows(APIException.class, () -> service.listShelfBooks("regular", 5L));
+
+        assertEquals(403, ex.getStatus().value());
     }
 
     @Test
@@ -152,6 +241,22 @@ class KoreaderShelfServiceTest {
         assertTrue(response.isRemoved());
         assertEquals(5L, response.getShelfId());
         assertEquals(1L, response.getBookId());
+        assertEquals("regular", response.getShelfType());
         verify(bookRepository).save(any(BookEntity.class));
+    }
+
+    @Test
+    void removeBookFromMagicShelf_returnsUnsupported() {
+        KoreaderShelfRemovalResponse response = service.removeBookFromShelf("magic", 99L, 1L);
+
+        assertFalse(response.isRemoved());
+        assertEquals("magic", response.getShelfType());
+        assertEquals("unsupported", response.getStatus());
+    }
+
+    @Test
+    void listShelves_invalidType_throwsBadRequest() {
+        APIException ex = assertThrows(APIException.class, () -> service.listShelves("unsupported"));
+        assertEquals(400, ex.getStatus().value());
     }
 }

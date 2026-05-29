@@ -15,6 +15,7 @@ import org.booklore.model.entity.UserBookFileProgressEntity;
 import org.booklore.model.entity.UserBookProgressEntity;
 import org.booklore.model.entity.koreader.KoreaderProgressEntity;
 import org.booklore.model.enums.BookFileType;
+import org.booklore.model.enums.ReadStatus;
 import org.booklore.repository.BookRepository;
 import org.booklore.repository.KoreaderUserRepository;
 import org.booklore.repository.UserBookFileProgressRepository;
@@ -47,6 +48,16 @@ public class KoreaderService {
     private final UserBookFileProgressRepository fileProgressRepository;
     private final KoreaderProgressRepository koreaderProgressRepository;
     private final KoreaderSecurityContextService securityContextService;
+    private static final int LARGE_BOOK_PAGE_COUNT_THRESHOLD = 1000;
+    private static final int LARGE_BOOK_READING_PAGE_THRESHOLD = 3;
+    private static final List<ReadStatus> SUPPORTED_MANUAL_READ_STATUSES = List.of(
+            ReadStatus.UNREAD,
+            ReadStatus.READING,
+            ReadStatus.READ,
+            ReadStatus.PAUSED,
+            ReadStatus.ABANDONED,
+            ReadStatus.RE_READING
+    );
 
     public ResponseEntity<Map<String, Object>> authorizeUser() {
         KoreaderUserDetails authDetails = getAuthDetails();
@@ -175,6 +186,39 @@ public class KoreaderService {
         return mapProgress(book, pdfFile, entity, bookHash, true, true, false, "updated", "PDF progress updated.");
     }
 
+    @Transactional(readOnly = true)
+    public List<String> getSupportedReadStatuses() {
+        return SUPPORTED_MANUAL_READ_STATUSES.stream()
+                .map(Enum::name)
+                .toList();
+    }
+
+    @Transactional
+    public Map<String, Object> updateReadStatus(Long bookId, String requestedStatus) {
+        BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
+        BookEntity book = loadAccessibleBookById(bookId, reader);
+        ReadStatus status = normalizeManualReadStatus(requestedStatus);
+
+        UserBookProgressEntity progress = progressRepository.findByUserIdAndBookId(reader.getId(), bookId)
+                .orElseGet(UserBookProgressEntity::new);
+
+        progress.setUser(reader);
+        progress.setBook(book);
+        progress.setReadStatus(status);
+        progress.setReadStatusModifiedTime(Instant.now());
+        if (status == ReadStatus.READ && progress.getDateFinished() == null) {
+            progress.setDateFinished(Instant.now());
+        }
+        progressRepository.save(progress);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", "ok");
+        response.put("bookId", bookId);
+        response.put("readStatus", status.name());
+        response.put("dateFinished", progress.getDateFinished());
+        return response;
+    }
+
     private void updateLegacyProgress(BookEntity book, BookFileEntity bookFile, KoreaderProgress request, Float percentage, Instant clientTimestamp) {
         UserBookProgressEntity userProgress = progressRepository.findByUserIdAndBookId(getCurrentUserId(), book.getId())
                 .orElseGet(UserBookProgressEntity::new);
@@ -185,6 +229,7 @@ public class KoreaderService {
         userProgress.setKoreaderProgressPercent(percentage != null ? percentage / 100f : null);
         userProgress.setKoreaderDevice(trimToNull(request.getDevice()));
         userProgress.setKoreaderDeviceId(trimToNull(request.getDeviceId()));
+        updateReadStatusFromKoreaderProgress(userProgress, percentage, request.getCurrentPage(), request.getTotalPages());
         userProgress.setKoreaderLastSyncTime(Instant.now());
         userProgress.setLastReadTime(clientTimestamp);
 
@@ -225,6 +270,7 @@ public class KoreaderService {
         progress.setKoreaderProgressPercent(percentage != null ? percentage / 100f : null);
         progress.setKoreaderDevice(trimToNull(request.getDevice()));
         progress.setKoreaderDeviceId(trimToNull(request.getDeviceId()));
+        updateReadStatusFromKoreaderProgress(progress, percentage, request.getCurrentPage(), request.getTotalPages());
         progress.setKoreaderLastSyncTime(Instant.now());
         progress.setLastReadTime(clientTimestamp);
         progressRepository.save(progress);
@@ -238,6 +284,48 @@ public class KoreaderService {
         fileProgress.setProgressPercent(percentage);
         fileProgress.setLastReadTime(clientTimestamp);
         fileProgressRepository.save(fileProgress);
+    }
+
+    private void updateReadStatusFromKoreaderProgress(UserBookProgressEntity progress,
+                                                      Float percentage,
+                                                      Integer currentPage,
+                                                      Integer totalPages) {
+        if (percentage == null || shouldPreserveCurrentStatus(progress)) {
+            return;
+        }
+
+        ReadStatus derivedStatus = deriveStatusFromKoreaderProgress(percentage, currentPage, totalPages);
+        progress.setReadStatus(derivedStatus);
+
+        if (derivedStatus == ReadStatus.READ && progress.getDateFinished() == null) {
+            progress.setDateFinished(Instant.now());
+        }
+    }
+
+    private boolean shouldPreserveCurrentStatus(UserBookProgressEntity progress) {
+        Instant statusModifiedTime = progress.getReadStatusModifiedTime();
+        if (statusModifiedTime == null) {
+            return false;
+        }
+
+        Instant koreaderLastSyncTime = progress.getKoreaderLastSyncTime();
+        return koreaderLastSyncTime == null || statusModifiedTime.isAfter(koreaderLastSyncTime);
+    }
+
+    private ReadStatus deriveStatusFromKoreaderProgress(float progressPercent, Integer currentPage, Integer totalPages) {
+        if (progressPercent >= 99f) {
+            return ReadStatus.READ;
+        }
+        if (progressPercent >= 1f) {
+            return ReadStatus.READING;
+        }
+        if (totalPages != null
+                && currentPage != null
+                && totalPages >= LARGE_BOOK_PAGE_COUNT_THRESHOLD
+                && currentPage >= LARGE_BOOK_READING_PAGE_THRESHOLD) {
+            return ReadStatus.READING;
+        }
+        return ReadStatus.UNREAD;
     }
 
     private Optional<KoreaderProgressEntity> resolveProgressEntity(Long userId, BookEntity book, BookFileEntity bookFile, String bookHash) {
@@ -456,6 +544,30 @@ public class KoreaderService {
             throw ApiError.GENERIC_BAD_REQUEST.createException("Book hash is required");
         }
         return bookHash.trim();
+    }
+
+    private ReadStatus normalizeManualReadStatus(String requestedStatus) {
+        String normalized = trimToNull(requestedStatus);
+        if (normalized == null) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("status is required");
+        }
+
+        String upper = normalized.toUpperCase();
+        if ("ON_HOLD".equals(upper)) {
+            upper = "PAUSED";
+        }
+
+        ReadStatus status;
+        try {
+            status = ReadStatus.valueOf(upper);
+        } catch (IllegalArgumentException ex) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("unsupported_status");
+        }
+
+        if (!SUPPORTED_MANUAL_READ_STATUSES.contains(status)) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException("unsupported_status");
+        }
+        return status;
     }
 
     private Float normalizePercentage(Float percentage) {
