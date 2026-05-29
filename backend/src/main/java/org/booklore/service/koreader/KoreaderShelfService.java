@@ -138,7 +138,7 @@ public class KoreaderShelfService {
             for (int start = 0; start < uniqueBookIds.size(); start += chunkSize) {
                 int end = Math.min(uniqueBookIds.size(), start + chunkSize);
                 List<Long> chunk = uniqueBookIds.subList(start, end);
-                books.addAll(bookRepository.findAllForSummaryByIds(chunk));
+                books.addAll(bookRepository.findBooksWithMetadataAndAuthors(chunk));
             }
             Map<Long, BookEntity> booksById = books.stream().collect(Collectors.toMap(BookEntity::getId, b -> b, (left, right) -> left));
             List<KoreaderBookSummary> result = new java.util.ArrayList<>();
