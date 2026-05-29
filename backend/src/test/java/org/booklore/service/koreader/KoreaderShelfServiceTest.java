@@ -157,7 +157,7 @@ class KoreaderShelfServiceTest {
     @Test
     void listShelfBooks_magicShelf_works() {
         when(magicShelfBookService.getBookIdsByMagicShelfId(42L, 99L)).thenReturn(List.of(1L));
-        when(bookRepository.findBooksWithMetadataAndAuthors(List.of(1L))).thenReturn(List.of(book));
+        when(bookRepository.findAllForSummaryByIds(List.of(1L))).thenReturn(List.of(book));
 
         List<KoreaderBookSummary> books = service.listShelfBooks("magic", 99L);
 

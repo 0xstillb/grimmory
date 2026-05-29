@@ -46,6 +46,7 @@ public class KoreaderShelfService {
         return listShelves(null);
     }
 
+    @Transactional(readOnly = true)
     public List<KoreaderShelfSummary> listShelves(String typeFilter) {
         BookLoreUserEntity reader = securityContextService.requireCurrentReaderEntity(true);
         String normalizedType = normalizeShelfTypeOrNull(typeFilter);
@@ -92,10 +93,12 @@ public class KoreaderShelfService {
         return summaries;
     }
 
+    @Transactional(readOnly = true)
     public List<KoreaderBookSummary> listShelfBooks(Long shelfId) {
         return listShelfBooks("regular", shelfId);
     }
 
+    @Transactional(readOnly = true)
     public List<KoreaderBookSummary> listShelfBooks(String shelfType, Long shelfId) {
         String normalizedType = normalizeShelfType(shelfType);
         if ("magic".equals(normalizedType)) {
@@ -138,7 +141,7 @@ public class KoreaderShelfService {
             for (int start = 0; start < uniqueBookIds.size(); start += chunkSize) {
                 int end = Math.min(uniqueBookIds.size(), start + chunkSize);
                 List<Long> chunk = uniqueBookIds.subList(start, end);
-                books.addAll(bookRepository.findBooksWithMetadataAndAuthors(chunk));
+                books.addAll(bookRepository.findAllForSummaryByIds(chunk));
             }
             Map<Long, BookEntity> booksById = books.stream().collect(Collectors.toMap(BookEntity::getId, b -> b, (left, right) -> left));
             List<KoreaderBookSummary> result = new java.util.ArrayList<>();
