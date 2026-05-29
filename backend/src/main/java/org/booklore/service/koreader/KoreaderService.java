@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @AllArgsConstructor
@@ -50,6 +51,7 @@ public class KoreaderService {
     private final KoreaderSecurityContextService securityContextService;
     private static final int LARGE_BOOK_PAGE_COUNT_THRESHOLD = 1000;
     private static final int LARGE_BOOK_READING_PAGE_THRESHOLD = 3;
+    private static final Set<String> FIXED_PAGE_FORMATS = Set.of("PDF", "CBX", "CBZ", "CBR", "CB7", "DJVU", "DJV");
     private static final List<ReadStatus> SUPPORTED_MANUAL_READ_STATUSES = List.of(
             ReadStatus.UNREAD,
             ReadStatus.READING,
@@ -98,7 +100,10 @@ public class KoreaderService {
         BookEntity book = resolveNativeBook(reader, request);
         BookFileEntity bookFile = resolveNativeBookFile(book, request);
         String bookHash = resolvePersistedBookHash(book, bookFile, request);
+        String resolvedFileFormat = resolveFileFormat(bookFile, request.getFileFormat());
+        boolean fixedPageFormat = isFixedPageFormat(bookFile, resolvedFileFormat);
         Float normalizedPercentage = normalizePercentage(request.getPercentage());
+        Float effectivePercentage = fixedPageFormat ? normalizedPercentage : null;
         Instant clientTimestamp = normalizeTimestamp(request.getTimestamp());
 
         KoreaderProgressEntity entity = resolveProgressEntity(reader.getId(), book, bookFile, bookHash)
@@ -109,10 +114,10 @@ public class KoreaderService {
         entity.setBookFile(bookFile);
         entity.setBookHash(bookHash);
         entity.setDocument(trimToNull(request.getDocument()));
-        entity.setFileFormat(resolveFileFormat(bookFile, request.getFileFormat()));
+        entity.setFileFormat(resolvedFileFormat);
         entity.setProgress(trimToNull(request.getProgress()));
         entity.setLocation(trimToNull(request.getLocation()));
-        entity.setPercentage(normalizedPercentage);
+        entity.setPercentage(effectivePercentage);
         entity.setCurrentPage(request.getCurrentPage());
         entity.setTotalPages(request.getTotalPages());
         entity.setDevice(trimToNull(request.getDevice()));
@@ -120,16 +125,16 @@ public class KoreaderService {
         entity.setClientTimestamp(clientTimestamp);
         koreaderProgressRepository.save(entity);
 
-        updateLegacyProgress(book, bookFile, request, normalizedPercentage, clientTimestamp);
+        updateLegacyProgress(book, bookFile, request, effectivePercentage, clientTimestamp, fixedPageFormat);
 
         log.info("GrimmLink progress sync source=koreader direction=push apiStatus=ok bookId={} bookFileId={} bookHash={} fileFormat={} currentPage={} totalPages={} percentage={} progress={} location={} device={} deviceId={} userId={}",
                 book.getId(),
                 bookFile != null ? bookFile.getId() : null,
                 bookHash,
-                resolveFileFormat(bookFile, request.getFileFormat()),
+                resolvedFileFormat,
                 request.getCurrentPage(),
                 request.getTotalPages(),
-                normalizedPercentage,
+                effectivePercentage,
                 request.getProgress(),
                 request.getLocation(),
                 request.getDevice(),
@@ -219,21 +224,30 @@ public class KoreaderService {
         return response;
     }
 
-    private void updateLegacyProgress(BookEntity book, BookFileEntity bookFile, KoreaderProgress request, Float percentage, Instant clientTimestamp) {
+    private void updateLegacyProgress(BookEntity book,
+                                      BookFileEntity bookFile,
+                                      KoreaderProgress request,
+                                      Float percentage,
+                                      Instant clientTimestamp,
+                                      boolean fixedPageFormat) {
         UserBookProgressEntity userProgress = progressRepository.findByUserIdAndBookId(getCurrentUserId(), book.getId())
                 .orElseGet(UserBookProgressEntity::new);
 
         userProgress.setUser(loadCurrentReader());
         userProgress.setBook(book);
         userProgress.setKoreaderProgress(trimToNull(request.getProgress()));
-        userProgress.setKoreaderProgressPercent(percentage != null ? percentage / 100f : null);
+        userProgress.setKoreaderProgressPercent(fixedPageFormat && percentage != null ? percentage / 100f : null);
         userProgress.setKoreaderDevice(trimToNull(request.getDevice()));
         userProgress.setKoreaderDeviceId(trimToNull(request.getDeviceId()));
-        updateReadStatusFromKoreaderProgress(userProgress, percentage, request.getCurrentPage(), request.getTotalPages());
+        if (fixedPageFormat) {
+            updateReadStatusFromKoreaderProgress(userProgress, percentage, request.getCurrentPage(), request.getTotalPages());
+        } else {
+            maybeMarkReadingFromNativeProgress(userProgress, request);
+        }
         userProgress.setKoreaderLastSyncTime(Instant.now());
         userProgress.setLastReadTime(clientTimestamp);
 
-        if (bookFile != null && request.getCurrentPage() != null) {
+        if (fixedPageFormat && bookFile != null && request.getCurrentPage() != null) {
             if (bookFile.getBookType() == BookFileType.PDF) {
                 userProgress.setPdfProgress(request.getCurrentPage());
                 userProgress.setPdfProgressPercent(percentage);
@@ -252,7 +266,7 @@ public class KoreaderService {
             fileProgress.setBookFile(bookFile);
             fileProgress.setPositionData(trimToNull(request.getProgress()));
             fileProgress.setPositionHref(trimToNull(request.getLocation()));
-            fileProgress.setProgressPercent(percentage);
+            fileProgress.setProgressPercent(fixedPageFormat ? percentage : null);
             fileProgress.setLastReadTime(clientTimestamp);
             fileProgressRepository.save(fileProgress);
         }
@@ -300,6 +314,22 @@ public class KoreaderService {
         if (derivedStatus == ReadStatus.READ && progress.getDateFinished() == null) {
             progress.setDateFinished(Instant.now());
         }
+    }
+
+    private void maybeMarkReadingFromNativeProgress(UserBookProgressEntity progress, KoreaderProgress request) {
+        if (shouldPreserveCurrentStatus(progress)) {
+            return;
+        }
+
+        if (progress.getReadStatus() != null && progress.getReadStatus() != ReadStatus.UNREAD) {
+            return;
+        }
+
+        if (!hasNativeLocationProgress(request)) {
+            return;
+        }
+
+        progress.setReadStatus(ReadStatus.READING);
     }
 
     private boolean shouldPreserveCurrentStatus(UserBookProgressEntity progress) {
@@ -528,6 +558,20 @@ public class KoreaderService {
             return requestedFormat.trim().toUpperCase();
         }
         return bookFile != null && bookFile.getBookType() != null ? bookFile.getBookType().name() : null;
+    }
+
+    private boolean isFixedPageFormat(BookFileEntity bookFile, String resolvedFileFormat) {
+        if (bookFile != null && bookFile.getBookType() != null) {
+            if (bookFile.getBookType() == BookFileType.PDF || bookFile.getBookType() == BookFileType.CBX) {
+                return true;
+            }
+        }
+        String normalized = trimToNull(resolvedFileFormat);
+        return normalized != null && FIXED_PAGE_FORMATS.contains(normalized.toUpperCase());
+    }
+
+    private boolean hasNativeLocationProgress(KoreaderProgress request) {
+        return firstNonBlank(request.getProgress(), request.getLocation()) != null;
     }
 
     private String resolveFileFormat(BookFileEntity bookFile, KoreaderProgress request) {
