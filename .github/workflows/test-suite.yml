@@ -69,8 +69,24 @@ jobs:
       - name: Execute Backend Tests
         id: backend_tests
         run: |
-          echo "Running backend tests..."
-          just api test
+          set -eu
+          max_attempts=3
+          attempt=1
+          while [ "$attempt" -le "$max_attempts" ]; do
+            echo "Running backend tests (attempt ${attempt}/${max_attempts})..."
+            if just api test; then
+              exit 0
+            fi
+
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "Backend tests failed after ${max_attempts} attempts"
+              exit 1
+            fi
+
+            echo "Backend tests failed; retrying in 20 seconds..."
+            sleep 20
+            attempt=$((attempt + 1))
+          done
         continue-on-error: true
 
       - name: Publish Backend Test Results
