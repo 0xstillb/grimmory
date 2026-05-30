@@ -222,11 +222,12 @@ public class KoreaderService {
     private void updateLegacyProgress(BookEntity book, BookFileEntity bookFile, KoreaderProgress request, Float percentage, Instant clientTimestamp) {
         UserBookProgressEntity userProgress = progressRepository.findByUserIdAndBookId(getCurrentUserId(), book.getId())
                 .orElseGet(UserBookProgressEntity::new);
+        Float displayPercentage = resolveDisplayPercentage(percentage, request.getCurrentPage(), request.getTotalPages());
 
         userProgress.setUser(loadCurrentReader());
         userProgress.setBook(book);
         userProgress.setKoreaderProgress(trimToNull(request.getProgress()));
-        userProgress.setKoreaderProgressPercent(percentage != null ? percentage / 100f : null);
+        userProgress.setKoreaderProgressPercent(displayPercentage != null ? displayPercentage / 100f : null);
         userProgress.setKoreaderDevice(trimToNull(request.getDevice()));
         userProgress.setKoreaderDeviceId(trimToNull(request.getDeviceId()));
         updateReadStatusFromKoreaderProgress(userProgress, percentage, request.getCurrentPage(), request.getTotalPages());
@@ -252,7 +253,7 @@ public class KoreaderService {
             fileProgress.setBookFile(bookFile);
             fileProgress.setPositionData(trimToNull(request.getProgress()));
             fileProgress.setPositionHref(trimToNull(request.getLocation()));
-            fileProgress.setProgressPercent(percentage);
+            fileProgress.setProgressPercent(displayPercentage);
             fileProgress.setLastReadTime(clientTimestamp);
             fileProgressRepository.save(fileProgress);
         }
@@ -584,6 +585,22 @@ public class KoreaderService {
             throw ApiError.GENERIC_BAD_REQUEST.createException("Progress percentage cannot exceed 100");
         }
         return Math.round(percentage * 10f) / 10f;
+    }
+
+    private Float resolveDisplayPercentage(Float normalizedPercentage, Integer currentPage, Integer totalPages) {
+        if (normalizedPercentage != null) {
+            return normalizedPercentage;
+        }
+        if (currentPage == null || totalPages == null || totalPages <= 0) {
+            return null;
+        }
+        float derived = ((float) currentPage / (float) totalPages) * 100f;
+        if (derived < 0f) {
+            derived = 0f;
+        } else if (derived > 100f) {
+            derived = 100f;
+        }
+        return Math.round(derived * 10f) / 10f;
     }
 
     private Instant normalizeTimestamp(Long timestamp) {
