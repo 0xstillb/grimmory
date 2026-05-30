@@ -367,6 +367,44 @@ class KoreaderServiceTest {
     }
 
     @Test
+    void saveProgress_nullPercentage_usesPageRatioForDisplayOnlyKoreaderPercent() {
+        BookFileEntity epubFile = new BookFileEntity();
+        epubFile.setId(11L);
+        epubFile.setBook(book);
+        epubFile.setBookType(BookFileType.EPUB);
+        epubFile.setCurrentHash("hash");
+        book.setBookFiles(List.of(epubFile));
+
+        KoreaderProgress request = KoreaderProgress.builder()
+                .bookHash("hash")
+                .bookId(1L)
+                .bookFileId(11L)
+                .fileFormat("EPUB")
+                .progress("chapter=2")
+                .location("/body/4/10")
+                .currentPage(12)
+                .totalPages(100)
+                .timestamp(556L)
+                .build();
+
+        when(bookRepository.findAllByBookHash("hash")).thenReturn(List.of(book));
+        when(progressRepository.findByUserIdAndBookId(42L, 1L)).thenReturn(Optional.empty());
+        when(fileProgressRepository.findByUserIdAndBookFileId(42L, 11L)).thenReturn(Optional.empty());
+
+        service.saveProgress(request);
+
+        ArgumentCaptor<UserBookProgressEntity> progressCaptor = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(progressRepository, atLeastOnce()).save(progressCaptor.capture());
+        UserBookProgressEntity savedProgress = progressCaptor.getValue();
+        assertEquals(0.12F, savedProgress.getKoreaderProgressPercent());
+        assertNull(savedProgress.getReadStatus());
+
+        ArgumentCaptor<UserBookFileProgressEntity> fileProgressCaptor = ArgumentCaptor.forClass(UserBookFileProgressEntity.class);
+        verify(fileProgressRepository, atLeastOnce()).save(fileProgressCaptor.capture());
+        assertEquals(12.0F, fileProgressCaptor.getValue().getProgressPercent());
+    }
+
+    @Test
     void saveProgress_updatesPdfAndLegacyProgress() {
         KoreaderProgress request = KoreaderProgress.builder()
                 .bookHash("hash")
