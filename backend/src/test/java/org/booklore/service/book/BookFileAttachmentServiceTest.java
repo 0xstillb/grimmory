@@ -638,6 +638,11 @@ class BookFileAttachmentServiceTest {
             assertTrue(Files.exists(tempDir.resolve("target_dir/target.epub")), "Original target file stays");
             assertTrue(Files.exists(tempDir.resolve("target_dir/target_1.epub")), "First source gets _1 suffix");
             assertTrue(Files.exists(tempDir.resolve("target_dir/target_2.epub")), "Second source gets _2 suffix");
+
+            Files.deleteIfExists(tempDir.resolve("target_dir/target_2.epub"));
+            Files.deleteIfExists(tempDir.resolve("target_dir/target_1.epub"));
+            Files.deleteIfExists(tempDir.resolve("target_dir/target.epub"));
+            Files.deleteIfExists(tempDir.resolve("target_dir"));
         }
     }
 

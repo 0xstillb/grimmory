@@ -6,6 +6,7 @@
 - Prefer `just api ...` and `just ui ...` over ad hoc commands.
 - Keep changes scoped to the relevant project instead of mixing backend, frontend, deployment, and release edits in one pass.
 - Target `develop`, not `main`.
+- For upstream sync work, do the merge on a dedicated branch first, validate there, and merge into `develop` only after the sync branch is stable.
 - First prove the change with targeted tests around the edited surface, then run the wider suite for that surface before handing off.
 - If you cannot run the wider suite, say exactly what you ran, what you skipped, and why.
 
@@ -25,6 +26,24 @@
 - `deploy/`, `packaging/`, `tools/`, `docs/`, and `assets/` are support surfaces. Do not change them unless the task actually touches deployment, packaging, release automation, or shared docs/assets.
 - Keep backend, frontend, deployment, and release work separated unless the task genuinely crosses those boundaries.
 - When a change spans multiple surfaces, validate each one explicitly.
+
+## Upstream Sync Rules
+
+- Treat upstream syncs as `GrimmLink-first`: preserve GrimmLink architecture, KOReader behavior, and fork-specific APIs unless there is an explicit decision to replace them.
+- Keep plugin compatibility when it is cheap and does not weaken GrimmLink contracts, but do not make plugin limitations the source of truth for server design.
+- Preserve GrimmLink-specific surfaces during syncs, including KOReader endpoints, reading-session batch behavior, metadata sync, shelf APIs, and the PDF/web reader bridge.
+- Prefer merging upstream fixes and dependency updates into existing GrimmLink logic rather than deleting GrimmLink logic to match upstream structure.
+- Resolve shared-file conflicts carefully, with special attention to `backend/build.gradle.kts`, `ReadingSessionService`, KOReader services, auth filters, and migration files.
+- Never reuse an upstream Flyway version number if this fork has already advanced past it. Renumber new upstream migrations so they remain strictly forward-only on `develop`.
+- After an upstream sync, verify both GrimmLink behavior and client compatibility, especially KOReader/grimmory plugin flows that depend on stable route, auth, and payload contracts.
+
+## Upstream Sync Exclusions
+
+- Do not restore or adopt upstream nightly or release-candidate release flows for this fork.
+- Keep the fork's `develop` image publishing flow centered on [`.github/workflows/publish-develop.yml`](E:/projects/grimmory/grimmory/.github/workflows/publish-develop.yml).
+- Do not bring back `.github/workflows/publish-nightly.yml` once removed.
+- Do not bring back `.github/workflows/release-candidate.yml` once removed.
+- If upstream release automation conflicts with fork automation, prefer the fork's `develop` image flow and existing GrimmLink release conventions unless explicitly instructed otherwise.
 
 ## Command Surface
 
