@@ -7,6 +7,7 @@ import org.booklore.model.dto.response.EpubSpineItem;
 import org.booklore.model.dto.response.EpubTocItem;
 import org.booklore.model.entity.BookEntity;
 import org.booklore.repository.BookRepository;
+import org.booklore.test.EpubNativeAvailableCondition;
 import org.booklore.util.FileUtils;
 import org.grimmory.epub4j.domain.*;
 import org.grimmory.epub4j.epub.EpubWriter;
@@ -139,6 +140,7 @@ class EpubReaderServiceTest {
     }
 
     @Test
+    @ExtendWith(EpubNativeAvailableCondition.class)
     void testStreamFile_Success() throws Exception {
         when(bookRepository.findByIdForStreaming(1L)).thenReturn(Optional.of(bookEntity));
 
@@ -166,6 +168,7 @@ class EpubReaderServiceTest {
     }
 
     @Test
+    @ExtendWith(EpubNativeAvailableCondition.class)
     void testStreamFile_FileNotFound() throws Exception {
         when(bookRepository.findByIdForStreaming(1L)).thenReturn(Optional.of(bookEntity));
 
@@ -184,6 +187,7 @@ class EpubReaderServiceTest {
     }
 
     @Test
+    @ExtendWith(EpubNativeAvailableCondition.class)
     void testStreamFile_PathTraversalBlocked() throws Exception {
         when(bookRepository.findByIdForStreaming(1L)).thenReturn(Optional.of(bookEntity));
 
@@ -202,6 +206,7 @@ class EpubReaderServiceTest {
     }
 
     @Test
+    @ExtendWith(EpubNativeAvailableCondition.class)
     void testStreamFile_ContainerXmlAllowed() throws Exception {
         when(bookRepository.findByIdForStreaming(1L)).thenReturn(Optional.of(bookEntity));
 
@@ -364,6 +369,7 @@ class EpubReaderServiceTest {
     }
 
     @Test
+    @ExtendWith(EpubNativeAvailableCondition.class)
     void testStreamFile_LeadingSlashHandled() throws Exception {
         when(bookRepository.findByIdForStreaming(1L)).thenReturn(Optional.of(bookEntity));
 

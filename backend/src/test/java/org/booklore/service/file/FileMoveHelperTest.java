@@ -12,6 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -359,6 +360,9 @@ class FileMoveHelperTest {
                 assertTrue(Files.exists(realDir), "Real directory should still exist");
             } catch (UnsupportedOperationException e) {
                 // Symlinks not supported on this system, skip test
+                org.junit.jupiter.api.Assumptions.assumeTrue(false, "Symlinks not supported on this system");
+            } catch (FileSystemException e) {
+                org.junit.jupiter.api.Assumptions.assumeTrue(false, "Symlink creation not permitted: " + e.getMessage());
             }
         }
     }

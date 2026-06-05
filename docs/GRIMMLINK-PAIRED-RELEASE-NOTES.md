@@ -17,7 +17,7 @@ This GrimmLink plugin version requires Grimmory fork with /api/grimmlink/v1 supp
 ## Backend Candidate
 
 - Branch: `codex/clean-grimmlink-api-island`
-- Tested head: `d7d3f8d8f chore(devex): document opf hook test guard`
+- Tested head: branch head after Windows backend validation portability fixes
 - Base: `upstream/develop` at `e83a143c3 chore(repo): migrate from yarn to pnpm (#1598)`
 - Canonical route prefix: `/api/grimmlink/v1`
 
@@ -87,13 +87,19 @@ Diff guard passed with no suspicious files:
 bash tools/fork-diff-guard.sh upstream/develop
 ```
 
-The wider backend `.\gradlew.bat test` run did not complete cleanly in this Windows environment. It timed out from the Codex tool, and the resulting XML failures are concentrated in pre-existing Windows-sensitive path, symlink, and native EPUB archive tests rather than the GrimmLink or OPF surfaces.
+The wider backend suite now passes in this Windows environment:
+
+```text
+.\gradlew.bat test
+```
+
+The run still prints a native EPUB probe stack trace because `epub4j_native.dll` is not available on this machine, but the native-dependent EPUB stream tests are conditionally skipped and Gradle exits successfully.
 
 ## Known Gaps Before Release
 
 - Manual KOReader device smoke testing has not been run in this session.
 - Async curl/wget device download has unit coverage in the plugin branch but still needs a device smoke test.
-- The full backend suite should be rerun in the intended CI/Linux environment before merging.
+- The full backend suite passed locally on Windows and should still run in CI before merging.
 - Do not merge or release the plugin branch before the backend branch with `/api/grimmlink/v1/**` is available.
 
 ## Suggested Release Pairing

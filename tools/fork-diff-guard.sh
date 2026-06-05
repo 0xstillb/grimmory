@@ -83,6 +83,12 @@ documented_hook_files=(
   "backend/src/main/java/org/booklore/config/security/SecurityConfig.java"
   "backend/src/main/java/org/booklore/model/dto/progress/KoreaderProgress.java"
   "backend/src/main/java/org/booklore/model/entity/ReadingSessionEntity.java"
+  "backend/src/main/java/org/booklore/util/FileService.java"
+  "backend/src/test/java/org/booklore/service/book/BookDownloadServiceTest.java"
+  "backend/src/test/java/org/booklore/service/file/FileMoveHelperTest.java"
+  "backend/src/test/java/org/booklore/service/library/LibraryFileHelperTest.java"
+  "backend/src/test/java/org/booklore/service/reader/EpubReaderServiceTest.java"
+  "backend/src/test/java/org/booklore/service/watcher/BookFilePersistenceServiceTest.java"
 )
 
 matches_pattern() {

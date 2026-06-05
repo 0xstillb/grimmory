@@ -51,6 +51,16 @@ GrimmLink API island:
 - `backend/src/main/java/org/booklore/model/dto/progress/KoreaderProgress.java`
 - `backend/src/main/java/org/booklore/model/entity/ReadingSessionEntity.java`
 
+The guard also allows the narrow validation portability fixes needed to prove
+the backend suite on Windows during this clean re-landing:
+
+- `backend/src/main/java/org/booklore/util/FileService.java`
+- `backend/src/test/java/org/booklore/service/book/BookDownloadServiceTest.java`
+- `backend/src/test/java/org/booklore/service/file/FileMoveHelperTest.java`
+- `backend/src/test/java/org/booklore/service/library/LibraryFileHelperTest.java`
+- `backend/src/test/java/org/booklore/service/reader/EpubReaderServiceTest.java`
+- `backend/src/test/java/org/booklore/service/watcher/BookFilePersistenceServiceTest.java`
+
 ## Strict Mode
 
 Strict mode is available for future CI hardening:
