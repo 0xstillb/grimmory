@@ -3,10 +3,12 @@ package org.booklore.service.fileprocessor;
 import org.booklore.mapper.BookMapper;
 import org.booklore.model.dto.settings.LibraryFile;
 import org.booklore.model.entity.BookEntity;
+import org.booklore.model.entity.BookFileEntity;
 import org.booklore.model.entity.LibraryEntity;
 import org.booklore.model.entity.LibraryPathEntity;
 import org.booklore.model.enums.BookFileType;
 import org.booklore.model.enums.LibraryOrganizationMode;
+import org.booklore.opf.BookScanMetadataAugmenter;
 import org.booklore.repository.BookAdditionalFileRepository;
 import org.booklore.repository.BookRepository;
 import org.booklore.service.book.BookCreatorService;
@@ -164,6 +166,30 @@ class AbstractFileProcessorTest {
         assertThat(result).isFalse();
     }
 
+    @Test
+    void processFileRunsGenericMetadataAugmentersBeforeMatchScoreAndSidecarWrite() throws IOException {
+        var libraryFile = buildLibraryFile(tempDir, "books", "book.epub", false, LibraryOrganizationMode.AUTO_DETECT);
+        Files.createDirectories(libraryFile.getFullPath().getParent());
+        Files.createFile(libraryFile.getFullPath());
+        var entity = new BookEntity();
+        var primaryFile = new BookFileEntity();
+        entity.setBookFiles(List.of(primaryFile));
+        entity.setMetadata(new org.booklore.model.entity.BookMetadataEntity());
+        processor.nextEntity = entity;
+        processor.setMetadataAugmenters(List.of((file, book) -> book.getMetadata().setTitle("OPF Title")));
+
+        when(metadataMatchService.calculateMatchScore(entity)).thenAnswer(invocation -> {
+            assertThat(entity.getMetadata().getTitle()).isEqualTo("OPF Title");
+            return 0.75f;
+        });
+        when(sidecarMetadataWriter.isWriteOnScanEnabled()).thenReturn(true);
+
+        processor.processFile(libraryFile);
+
+        verify(sidecarMetadataWriter).writeSidecarMetadata(entity);
+        assertThat(entity.getMetadataMatchScore()).isEqualTo(0.75f);
+    }
+
     // ========== helpers ==========
 
     private void createTestImage(Path path) throws IOException {
@@ -192,6 +218,7 @@ class AbstractFileProcessorTest {
      * Minimal concrete subclass to expose protected methods for testing.
      */
     static class TestableFileProcessor extends AbstractFileProcessor {
+        BookEntity nextEntity;
 
         TestableFileProcessor(BookRepository bookRepository,
                               BookAdditionalFileRepository bookAdditionalFileRepository,
@@ -206,7 +233,7 @@ class AbstractFileProcessorTest {
 
         @Override
         protected BookEntity processNewFile(LibraryFile libraryFile) {
-            return null;
+            return nextEntity;
         }
 
         @Override

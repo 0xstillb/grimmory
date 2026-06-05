@@ -77,6 +77,7 @@ allowed_patterns=(
 )
 
 documented_hook_files=(
+  "backend/src/main/java/org/booklore/service/fileprocessor/AbstractFileProcessor.java"
   "backend/src/main/java/org/booklore/config/security/SecurityConfig.java"
   "backend/src/main/java/org/booklore/model/dto/progress/KoreaderProgress.java"
   "backend/src/main/java/org/booklore/model/entity/ReadingSessionEntity.java"
