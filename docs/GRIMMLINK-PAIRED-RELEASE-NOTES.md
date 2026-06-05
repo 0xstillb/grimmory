@@ -17,7 +17,7 @@ This GrimmLink plugin version requires Grimmory fork with /api/grimmlink/v1 supp
 ## Backend Candidate
 
 - Branch: `codex/clean-grimmlink-api-island`
-- Tested head: branch head after Windows backend validation portability fixes
+- Validated head: `53a2b7682 fix(test): make backend suite portable on Windows`
 - Base: `upstream/develop` at `e83a143c3 chore(repo): migrate from yarn to pnpm (#1598)`
 - Canonical route prefix: `/api/grimmlink/v1`
 
