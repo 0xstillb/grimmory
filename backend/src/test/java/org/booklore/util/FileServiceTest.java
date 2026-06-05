@@ -335,7 +335,7 @@ class FileServiceTest {
 
                     Path actual = fileService.findSystemFile("example");
 
-                    assertEquals(expected, actual);
+                    assertEquals(expected.toAbsolutePath().normalize(), actual);
                 }
             }
         }
