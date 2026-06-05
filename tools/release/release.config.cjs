@@ -2,7 +2,9 @@ const releasePolicy = require("./release-policy.cjs");
 
 module.exports = {
   branches: ["main"],
-  tagFormat: "v${version}",
+  // Fork stable releases must continue the GrimmLink tag line so semantic-release
+  // does not fall back to older upstream-style v1.x tags reachable from main.
+  tagFormat: "v${version}-GrimmLink",
   plugins: [
     [
       "@semantic-release/commit-analyzer",
