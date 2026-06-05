@@ -22,9 +22,21 @@ jobs:
           ref: ${{ github.sha }}
 
       - name: Set Up QEMU for Multi-Arch Builds
+        id: qemu
+        continue-on-error: true
         uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
         with:
           cache-image: false
+
+      - name: Resolve Build Platforms
+        id: release_platforms
+        run: |
+          if [ "${{ steps.qemu.outcome }}" = "success" ]; then
+            echo "platforms=linux/amd64,linux/arm64" >> "$GITHUB_OUTPUT"
+          else
+            echo "QEMU setup failed; falling back to linux/amd64 for this release run"
+            echo "platforms=linux/amd64" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set Up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
@@ -59,7 +71,7 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ steps.release_platforms.outputs.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           annotations: ${{ steps.meta.outputs.annotations }}
