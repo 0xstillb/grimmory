@@ -16,12 +16,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.FileSystems;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @ExtendWith(MockitoExtension.class)
 class LibraryFileHelperTest {
@@ -61,7 +63,7 @@ class LibraryFileHelperTest {
                 .stream()
                 .map(LibraryFile::getFullPath)
                 .map(p -> tempDir.relativize(p))
-                .map(Path::toString)
+                .map(path -> path.toString().replace('\\', '/'))
                 .sorted()
                 .toList();
 
@@ -75,6 +77,9 @@ class LibraryFileHelperTest {
 
     @Test
     void testGetLibraryFiles_HandlesInaccessibleDirectories() throws IOException {
+        assumeTrue(FileSystems.getDefault().supportedFileAttributeViews().contains("posix"),
+                "POSIX permissions are not supported on this platform");
+
         Files.write(tempDir.resolve("happy.epub"), new byte[]{1});
         Files.createDirectory(tempDir.resolve("some_other_random_named_dir"), PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("---------")));
         Files.write(tempDir.resolve("zzzz_happ.epub"), new byte[]{1});
@@ -372,6 +377,34 @@ class LibraryFileHelperTest {
 
         assertThat(files).hasSize(1);
         assertThat(files.getFirst().isFolderBased()).isTrue();
+    }
+
+    @Test
+    void bookPerFile_collapsesMultiFileAudiobookSubfolder() throws IOException {
+        Path audioDir = Files.createDirectories(tempDir.resolve("Chaptered Audiobook"));
+        Files.write(audioDir.resolve("Chaptered Audiobook - 1 - Chapter One.mp3"), new byte[]{1});
+        Files.write(audioDir.resolve("Chaptered Audiobook - 2 - Chapter Two.mp3"), new byte[]{1});
+
+        List<LibraryFile> files = libraryFileHelper.getLibraryFiles(createLibraryWithMode(tempDir, LibraryOrganizationMode.BOOK_PER_FILE));
+
+        assertThat(files).hasSize(1);
+        assertThat(files.getFirst().isFolderBased()).isTrue();
+        assertThat(files.getFirst().getFileName()).isEqualTo("Chaptered Audiobook");
+        assertThat(files.getFirst().getBookFileType()).isEqualTo(BookFileType.AUDIOBOOK);
+    }
+
+    @Test
+    void bookPerFolder_collapsesMultiFileAudiobookSubfolder() throws IOException {
+        Path audioDir = Files.createDirectories(tempDir.resolve("Chaptered Audiobook"));
+        Files.write(audioDir.resolve("Chaptered Audiobook - 1 - Chapter One.mp3"), new byte[]{1});
+        Files.write(audioDir.resolve("Chaptered Audiobook - 2 - Chapter Two.mp3"), new byte[]{1});
+
+        List<LibraryFile> files = libraryFileHelper.getLibraryFiles(createLibraryWithMode(tempDir, LibraryOrganizationMode.BOOK_PER_FOLDER));
+
+        assertThat(files).hasSize(1);
+        assertThat(files.getFirst().isFolderBased()).isTrue();
+        assertThat(files.getFirst().getFileName()).isEqualTo("Chaptered Audiobook");
+        assertThat(files.getFirst().getBookFileType()).isEqualTo(BookFileType.AUDIOBOOK);
     }
 
     @Test

@@ -17,6 +17,7 @@ import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
@@ -59,8 +60,9 @@ public class BookDownloadServiceTest {
         BookEntity bookEntity = getSampleBook("example.epub");
         when(bookRepository.findByIdWithBookFiles(1L)).thenReturn(Optional.of(bookEntity));
 
-        mockFiles.when(() -> Files.exists(bookEntity.getFullFilePath())).thenReturn(true);
-        mockFiles.when(() -> Files.isDirectory(bookEntity.getFullFilePath())).thenReturn(false);
+        Path resolvedPath = bookEntity.getPrimaryBookFile().getFullFilePath().toAbsolutePath().normalize();
+        mockFiles.when(() -> Files.exists(resolvedPath)).thenReturn(true);
+        mockFiles.when(() -> Files.isDirectory(resolvedPath)).thenReturn(false);
 
         String actual = bookDownloadService.downloadBook(1L)
                 .getHeaders()
@@ -76,8 +78,9 @@ public class BookDownloadServiceTest {
         BookEntity bookEntity = getSampleBook("ɇxample.epub");
         when(bookRepository.findByIdWithBookFiles(1L)).thenReturn(Optional.of(bookEntity));
 
-        mockFiles.when(() -> Files.exists(bookEntity.getFullFilePath())).thenReturn(true);
-        mockFiles.when(() -> Files.isDirectory(bookEntity.getFullFilePath())).thenReturn(false);
+        Path resolvedPath = bookEntity.getPrimaryBookFile().getFullFilePath().toAbsolutePath().normalize();
+        mockFiles.when(() -> Files.exists(resolvedPath)).thenReturn(true);
+        mockFiles.when(() -> Files.isDirectory(resolvedPath)).thenReturn(false);
 
         String actual = bookDownloadService.downloadBook(1L)
                 .getHeaders()
@@ -94,7 +97,7 @@ public class BookDownloadServiceTest {
 
         BookFileEntity bookFileEntity = BookFileEntity.builder()
                 .fileName(filename)
-                .fileSubPath("/subpath")
+                .fileSubPath("subpath")
                 .build();
 
         BookEntity bookEntity = BookEntity.builder()

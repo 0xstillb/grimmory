@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
@@ -357,8 +358,8 @@ class FileMoveHelperTest {
 
                 assertTrue(Files.exists(nestedDir), "Should not delete dir with symlink");
                 assertTrue(Files.exists(realDir), "Real directory should still exist");
-            } catch (UnsupportedOperationException e) {
-                // Symlinks not supported on this system, skip test
+            } catch (UnsupportedOperationException | IOException e) {
+                Assumptions.assumeTrue(false, "Symlinks are not available in this environment: " + e.getMessage());
             }
         }
     }

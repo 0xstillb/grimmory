@@ -10,6 +10,7 @@ import org.booklore.model.dto.response.EpubTocItem;
 import org.booklore.model.entity.BookEntity;
 import org.booklore.model.entity.BookFileEntity;
 import org.booklore.model.enums.BookFileType;
+import org.booklore.nativelib.NativeLibraries;
 import org.booklore.repository.BookRepository;
 import org.booklore.util.FileUtils;
 import org.grimmory.epub4j.domain.*;
@@ -25,6 +26,8 @@ import java.time.Duration;
 import java.util.*;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 @Slf4j
 @Service
@@ -380,8 +383,23 @@ public class EpubReaderService {
     }
 
     private void streamEntryFromZip(Path epubPath, String entryName, OutputStream outputStream) throws IOException {
-        try (NativeArchive archive = NativeArchive.open(epubPath)) {
-            archive.streamEntry(entryName, outputStream);
+        if (NativeLibraries.get().isEpubNativeAvailable()) {
+            try (NativeArchive archive = NativeArchive.open(epubPath)) {
+                archive.streamEntry(entryName, outputStream);
+                return;
+            } catch (Throwable nativeFailure) {
+                log.warn("Falling back to JDK ZIP streaming for {} due to native EPUB failure: {}", epubPath, nativeFailure.toString());
+            }
+        }
+
+        try (ZipFile zipFile = new ZipFile(epubPath.toFile())) {
+            ZipEntry entry = zipFile.getEntry(entryName);
+            if (entry == null) {
+                throw new FileNotFoundException("File not found in EPUB: " + entryName);
+            }
+            try (InputStream inputStream = zipFile.getInputStream(entry)) {
+                inputStream.transferTo(outputStream);
+            }
         }
     }
 
