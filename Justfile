@@ -31,6 +31,14 @@ bootstrap: ui::install api::version
 # Run the full local verification pass used before opening a PR.
 check: api::check ui::check
 
+# Report fork changes that drift outside documented ownership areas.
+diff-guard baseline='upstream/develop':
+    tools/fork-diff-guard.sh "{{ baseline }}"
+
+# Strict version of diff-guard for future CI hardening.
+diff-guard-strict baseline='upstream/develop':
+    tools/fork-diff-guard.sh --strict "{{ baseline }}"
+
 # Run the frontend and backend test suites.
 test: api::test ui::test
 
