@@ -72,6 +72,7 @@ allowed_patterns=(
   "backend/src/main/resources/db/migration/**"
   "docs/koreader-companion/**"
   "docs/GRIMMLINK-BACKEND-CHANGES.md"
+  "docs/GRIMMLINK-PAIRED-RELEASE-NOTES.md"
   "docs/FORK-DIFF-GUARD.md"
   "tools/fork-diff-guard.sh"
 )
