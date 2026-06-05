@@ -45,6 +45,13 @@
 - Do not bring back `.github/workflows/release-candidate.yml` once removed.
 - If upstream release automation conflicts with fork automation, prefer the fork's `develop` image flow and existing GrimmLink release conventions unless explicitly instructed otherwise.
 
+## Stable Release Rules
+
+- GrimmLink stable releases must use the tag format `vX.Y.Z-GrimmLink`.
+- Do not ship a stable release from a plain `vX.Y.Z` tag on this fork unless there is an explicit decision to rename the entire release line.
+- Before promoting `develop` to `main`, run the release preview and confirm the next version stays on the GrimmLink tag line.
+- If `semantic-release` resolves its last release from a plain tag such as `v1.2.1`, stop and fix the release configuration before publishing the draft release.
+
 ## Command Surface
 
 Use these first:

@@ -2,6 +2,12 @@
 
 This repository now uses `semantic-release` for stable releases.
 
+For this fork, stable tags must stay on the `GrimmLink` line:
+
+- stable tags use `vX.Y.Z-GrimmLink`
+- `semantic-release` must never fall back to old plain `vX.Y.Z` tags from earlier fork history
+- always preview the next stable release before promoting `develop` to `main`
+
 Stable releases are not created by manually dispatching a "release" workflow. Instead, a stable release is triggered by pushing release-worthy conventional commits to `main`.
 
 ## Overview
@@ -37,7 +43,8 @@ Release behavior is based on commit history since the last stable tag:
 - `BREAKING CHANGE:` triggers a major release.
 - `docs:`, `ci:`, `build:`, `chore:`, `test:`, and `style:` appear in notes but do not trigger a release on their own.
 
-The next version is always computed from the latest stable tag already reachable from `main`.
+For this fork, the next version is computed from the latest reachable `vX.Y.Z-GrimmLink` tag on `main`.
+Plain upstream-style tags such as `v1.2.1` or merged upstream tags such as `v3.2.0` are not the release base for GrimmLink stable publishing.
 
 ## Recommended Maintainer Flow
 
@@ -56,6 +63,7 @@ Use it to confirm:
 
 - whether a release will be created,
 - what the next version will be,
+- that the version stays on the `vX.Y.Z-GrimmLink` line,
 - how the release notes will be grouped,
 - and which commits are included in the `main..candidate` release range.
 
@@ -72,25 +80,23 @@ If a release is warranted, `release-main.yml` will:
 - run the migration check,
 - run the shared test suite,
 - compute the next semantic version,
-- update `CHANGELOG.md`,
-- create a release commit with `[skip ci]`,
-- create the Git tag `vX.Y.Z`,
+- create the Git tag `vX.Y.Z-GrimmLink`,
 - and create a draft GitHub release.
 
 If no release is warranted, the workflow exits without tagging or publishing.
 
 ### 4. Let the stable publish job release the artifacts
 
-When `semantic-release` creates a release, [`.github/workflows/release-main.yml`](../.github/workflows/release-main.yml) directly invokes [`.github/workflows/publish-release.yml`](../.github/workflows/publish-release.yml) with the resolved release tag and commit SHA.
+After the draft release is reviewed and published on GitHub, [`.github/workflows/publish-release.yml`](../.github/workflows/publish-release.yml) runs from the `release: released` event.
 
 That workflow will:
 
 - build the multi-architecture container image,
-- publish `grimmory/grimmory:vX.Y.Z`,
+- publish `grimmory/grimmory:vX.Y.Z-GrimmLink`,
 - publish `grimmory/grimmory:latest`,
-- publish `ghcr.io/grimmory-tools/grimmory:vX.Y.Z`,
+- publish `ghcr.io/grimmory-tools/grimmory:vX.Y.Z-GrimmLink`,
 - publish `ghcr.io/grimmory-tools/grimmory:latest`,
-- and flip the GitHub release from draft to published.
+- and upload the stable release artifacts for the published release.
 
 ## Develop Builds
 
@@ -111,4 +117,5 @@ Use the preview-image workflow if you want a one-off test image without creating
 ## Notes
 
 - Stable releases are driven by commit history on `main`, not by labels or manual version bump inputs.
+- If the preview shows a plain `vX.Y.Z` result, stop and fix the release base before publishing anything.
 - If you need to understand why a release did or did not happen, start with the `Release - Dry Run Preview` workflow and then inspect the `semantic-release` output.
