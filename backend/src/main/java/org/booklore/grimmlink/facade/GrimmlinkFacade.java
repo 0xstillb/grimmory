@@ -360,7 +360,18 @@ public class GrimmlinkFacade {
     public void recordReadingSession(org.booklore.model.dto.request.ReadingSessionRequest request) {
         BookLoreUserEntity reader = requireCurrentReaderEntity(true);
         BookEntity book = loadAccessibleBookById(reader, request.getBookId());
-        readingSessionRepository.save(buildSession(reader, book, request, null));
+        ReadingSessionEntity session = readingSessionRepository.save(buildSession(reader, book, request, null));
+        log.info(
+                "Grimmlink reading session persisted successfully: sessionId={}, userId={}, bookId={}, bookHash={}, bookType={}, duration={}s, device={}, deviceId={}",
+                session.getId(),
+                reader.getId(),
+                book.getId(),
+                session.getBookHash(),
+                session.getBookType(),
+                session.getDurationSeconds(),
+                session.getDevice(),
+                session.getDeviceId()
+        );
     }
 
     @Transactional
@@ -377,6 +388,17 @@ public class GrimmlinkFacade {
                             .build();
                 })
                 .toList();
+        log.info(
+                "Grimmlink reading session batch persisted successfully: userId={}, bookId={}, bookHash={}, bookType={}, requested={}, saved={}, device={}, deviceId={}",
+                reader.getId(),
+                book.getId(),
+                resolveRequestBookHash(request.getBookHash(), book),
+                resolveBookType(request.getBookType(), book),
+                request.getSessions().size(),
+                results.size(),
+                trimToNull(request.getDevice()),
+                trimToNull(request.getDeviceId())
+        );
         return GrimmlinkReadingSessionBatchResponse.builder()
                 .totalRequested(request.getSessions().size())
                 .successCount(results.size())
@@ -389,7 +411,9 @@ public class GrimmlinkFacade {
                 .user(reader)
                 .book(book)
                 .bookType(request.getBookType() != null ? request.getBookType() : resolveBookType(book))
-                .bookHash(resolveRequestBookHash(null, book))
+                .bookHash(resolveRequestBookHash(request.getBookHash(), book))
+                .device(trimToNull(request.getDevice()))
+                .deviceId(trimToNull(request.getDeviceId()))
                 .startTime(request.getStartTime())
                 .endTime(request.getEndTime())
                 .durationSeconds(request.getDurationSeconds())
@@ -399,6 +423,8 @@ public class GrimmlinkFacade {
                 .progressDelta(request.getProgressDelta())
                 .startLocation(request.getStartLocation())
                 .endLocation(request.getEndLocation())
+                .currentPage(request.getCurrentPage())
+                .totalPages(request.getTotalPages())
                 .build();
     }
 

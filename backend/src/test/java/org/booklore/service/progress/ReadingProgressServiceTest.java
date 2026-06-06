@@ -139,6 +139,30 @@ class ReadingProgressServiceTest {
     }
 
     @Test
+    void enrichBookWithProgress_shouldKeepStoredPercentScaleForKoreaderProgress() {
+        Book book = Book.builder().id(1L).build();
+        UserBookProgressEntity progress = new UserBookProgressEntity();
+        progress.setKoreaderProgressPercent(15.3f);
+
+        readingProgressService.enrichBookWithProgress(book, progress);
+
+        assertNotNull(book.getKoreaderProgress());
+        assertEquals(15.3f, book.getKoreaderProgress().getPercentage());
+    }
+
+    @Test
+    void enrichBookWithProgress_shouldNormalizeLegacyFractionalProgressValues() {
+        Book book = Book.builder().id(1L).build();
+        UserBookProgressEntity progress = new UserBookProgressEntity();
+        progress.setKoreaderProgressPercent(0.153f);
+
+        readingProgressService.enrichBookWithProgress(book, progress);
+
+        assertNotNull(book.getKoreaderProgress());
+        assertEquals(15.3f, book.getKoreaderProgress().getPercentage());
+    }
+
+    @Test
     void enrichBookWithProgress_withFileProgress_shouldOverlayFileProgress() {
         Book book = Book.builder().id(1L).build();
 
