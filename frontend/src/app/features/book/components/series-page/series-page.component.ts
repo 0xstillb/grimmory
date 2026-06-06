@@ -294,11 +294,7 @@ export class SeriesPageComponent implements AfterViewChecked {
 
   nextUp = computed<NextUpBook | null>(() => {
     const books = this.filteredBooks();
-    const reading = books.find(book =>
-      book.readStatus === ReadStatus.READING ||
-      book.readStatus === ReadStatus.RE_READING ||
-      book.readStatus === ReadStatus.PAUSED
-    );
+    const reading = books.find(book => this.isReadingCandidate(book));
     const target = reading || books.find(book => book.readStatus === ReadStatus.UNREAD || !book.readStatus);
     if (!target) return null;
 
@@ -307,22 +303,11 @@ export class SeriesPageComponent implements AfterViewChecked {
       ? this.urlHelper.getAudiobookThumbnailUrl(target.id, target.metadata?.audiobookCoverUpdatedOn)
       : this.urlHelper.getThumbnailUrl(target.id, target.metadata?.coverUpdatedOn);
 
-    const isReading = target.readStatus === ReadStatus.READING ||
-      target.readStatus === ReadStatus.RE_READING ||
-      target.readStatus === ReadStatus.PAUSED;
+    const isReading = this.isReadingCandidate(target);
 
     let progressPercent: number | null = null;
     if (isReading) {
-      progressPercent = target.epubProgress?.percentage
-        ?? target.pdfProgress?.percentage
-        ?? target.cbxProgress?.percentage
-        ?? target.audiobookProgress?.percentage
-        ?? target.koreaderProgress?.percentage
-        ?? target.koboProgress?.percentage
-        ?? null;
-      if (progressPercent != null) {
-        progressPercent = Math.round(progressPercent);
-      }
+      progressPercent = this.getBookProgress(target);
     }
 
     return {book: target, thumbnailUrl, isReading, progressPercent};
@@ -579,9 +564,48 @@ export class SeriesPageComponent implements AfterViewChecked {
       ?? book.audiobookProgress?.percentage
       ?? book.koreaderProgress?.percentage
       ?? book.koboProgress?.percentage;
-    if (progress == null || progress <= 0) return null;
-    const pct = progress > 1 ? progress : Math.round(progress * 100);
-    return Math.min(Math.round(pct), 100);
+    const normalized = this.normalizeProgressPercent(progress);
+    if (normalized == null || normalized <= 0) return null;
+    return Math.round(normalized);
+  }
+
+  private isReadingCandidate(book: Book): boolean {
+    if (
+      book.readStatus === ReadStatus.READING ||
+      book.readStatus === ReadStatus.RE_READING ||
+      book.readStatus === ReadStatus.PAUSED
+    ) {
+      return true;
+    }
+
+    const progress = this.normalizeProgressPercent(this.getRawBookProgress(book));
+    return progress != null && progress > 0 && progress < 100;
+  }
+
+  private getRawBookProgress(book: Book): number | null {
+    return book.epubProgress?.percentage
+      ?? book.pdfProgress?.percentage
+      ?? book.cbxProgress?.percentage
+      ?? book.audiobookProgress?.percentage
+      ?? book.koreaderProgress?.percentage
+      ?? book.koboProgress?.percentage
+      ?? null;
+  }
+
+  private normalizeProgressPercent(progress: number | null | undefined): number | null {
+    if (progress == null) {
+      return null;
+    }
+
+    let normalized = progress;
+    if (normalized <= 1) {
+      normalized *= 100;
+    } else if (normalized > 100) {
+      normalized /= 100;
+    }
+
+    normalized = Math.max(normalized, 0);
+    return Math.min(normalized, 100);
   }
 
   formatDuration(totalSeconds: number): string {

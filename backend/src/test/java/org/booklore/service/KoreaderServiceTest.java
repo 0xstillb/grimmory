@@ -8,16 +8,19 @@ import org.booklore.config.security.userdetails.KoreaderUserDetails;
 import org.booklore.exception.APIException;
 import org.booklore.model.dto.progress.KoreaderProgress;
 import org.booklore.model.entity.BookEntity;
+import org.booklore.model.entity.BookFileEntity;
 import org.booklore.model.entity.BookLoreUserEntity;
 import org.booklore.model.entity.KoreaderUserEntity;
 import org.booklore.model.entity.UserBookProgressEntity;
 import org.booklore.model.enums.ReadStatus;
 import org.booklore.repository.BookRepository;
+import org.booklore.repository.UserBookFileProgressRepository;
 import org.booklore.repository.UserBookProgressRepository;
 import org.booklore.repository.UserRepository;
 import org.booklore.repository.KoreaderUserRepository;
 import org.booklore.service.hardcover.HardcoverSyncService;
 import org.booklore.service.koreader.KoreaderService;
+import org.booklore.util.koreader.EpubCfiService;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
@@ -29,6 +32,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.*;
 
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
@@ -47,6 +51,10 @@ class KoreaderServiceTest {
     KoreaderUserRepository koreaderUserRepo;
     @Mock
     HardcoverSyncService hardcoverSyncService;
+    @Mock
+    UserBookFileProgressRepository fileProgressRepo;
+    @Mock
+    EpubCfiService epubCfiService;
 
     @InjectMocks
     KoreaderService service;
@@ -116,7 +124,7 @@ class KoreaderServiceTest {
         KoreaderProgress out = service.getProgress("h");
         assertEquals("h", out.getDocument());
         assertEquals("p", out.getProgress());
-        assertEquals(0.5F, out.getPercentage());
+        assertEquals(50.0F, out.getPercentage(), 0.0001F);
     }
 
     @Test
@@ -160,7 +168,7 @@ class KoreaderServiceTest {
         KoreaderProgress out = service.getProgress("hash123");
         assertEquals("hash123", out.getDocument());
         assertEquals("progress/path", out.getProgress());
-        assertEquals(0.75F, out.getPercentage());
+        assertEquals(75.0F, out.getPercentage(), 0.0001F);
         assertEquals(1762209924L, out.getTimestamp());
     }
 
@@ -181,7 +189,7 @@ class KoreaderServiceTest {
         KoreaderProgress out = service.getProgress("hash456");
         assertEquals("hash456", out.getDocument());
         assertEquals("progress/path2", out.getProgress());
-        assertEquals(0.25F, out.getPercentage());
+        assertEquals(25.0F, out.getPercentage(), 0.0001F);
         assertNull(out.getTimestamp());
     }
 
@@ -205,9 +213,10 @@ class KoreaderServiceTest {
         verify(progressRepo).save(cap.capture());
         var saved = cap.getValue();
         assertEquals("x", saved.getKoreaderProgress());
-        assertEquals(0.6F, saved.getKoreaderProgressPercent());
+        assertEquals(60.0F, saved.getKoreaderProgressPercent(), 0.0001F);
         assertEquals("d", saved.getKoreaderDevice());
         assertEquals("id", saved.getKoreaderDeviceId());
+        assertEquals(ReadStatus.READING, saved.getReadStatus());
         assertEquals(Instant.class, saved.getKoreaderLastSyncTime().getClass());
     }
 
@@ -230,7 +239,8 @@ class KoreaderServiceTest {
 
         verify(progressRepo).save(existing);
         assertEquals("y", existing.getKoreaderProgress());
-        assertEquals(0.4F, existing.getKoreaderProgressPercent());
+        assertEquals(40.0F, existing.getKoreaderProgressPercent(), 0.0001F);
+        assertEquals(ReadStatus.READING, existing.getReadStatus());
     }
 
     @Test
@@ -243,19 +253,82 @@ class KoreaderServiceTest {
         user.setId(42L);
         when(userRepo.findById(42L)).thenReturn(Optional.of(user));
         var existing = new UserBookProgressEntity();
-        existing.setKoreaderProgressPercent(0.4F);
+        existing.setKoreaderProgressPercent(40.0F);
         existing.setReadStatus(ReadStatus.READING);
         when(progressRepo.findByUserIdAndBookId(42L, 8L))
                 .thenReturn(Optional.of(existing));
 
         var dto = KoreaderProgress.builder()
-                .document("h").progress("y").percentage(0.4F).device("d").device_id("id").build();
+                .document("h").progress("y").percentage(40.0F).device("d").device_id("id").build();
         service.saveProgress("h", dto);
 
         verify(progressRepo).save(existing);
         assertEquals("y", existing.getKoreaderProgress());
-        assertEquals(0.4F, existing.getKoreaderProgressPercent());
+        assertEquals(40.0F, existing.getKoreaderProgressPercent(), 0.0001F);
         verify(hardcoverSyncService, never()).syncProgressToHardcover(any(), any(), any());
+    }
+
+    @Test
+    void saveProgress_syncWithWebReader_normalizesPercentAndKeepsReadingStatus() {
+        when(details.isSyncEnabled()).thenReturn(true);
+        when(details.isSyncWithWebReader()).thenReturn(true);
+
+        var book = mock(BookEntity.class);
+        var primaryFile = new BookFileEntity();
+        primaryFile.setId(91L);
+        when(book.getId()).thenReturn(9L);
+        when(book.getFullFilePath()).thenReturn(Path.of("book.epub"));
+        when(book.getPrimaryBookFile()).thenReturn(primaryFile);
+        when(bookRepo.findByCurrentHash("epub-hash")).thenReturn(Optional.of(book));
+
+        var user = new BookLoreUserEntity();
+        user.setId(42L);
+        when(userRepo.findById(42L)).thenReturn(Optional.of(user));
+        when(progressRepo.findByUserIdAndBookId(42L, 9L)).thenReturn(Optional.of(new UserBookProgressEntity()));
+        when(epubCfiService.convertXPointerToCfi(any(Path.class), eq("/body/DocFragment[1]/body/div[1]/p[1]")))
+                .thenReturn("epubcfi(/6/2!/4/2)");
+        when(fileProgressRepo.findByUserIdAndBookFileId(42L, 91L)).thenReturn(Optional.empty());
+
+        var dto = KoreaderProgress.builder()
+                .document("epub-hash")
+                .progress("/body/DocFragment[1]/body/div[1]/p[1]")
+                .percentage(10.7F)
+                .device("android")
+                .device_id("pixel")
+                .build();
+
+        service.saveProgress("epub-hash", dto);
+
+        ArgumentCaptor<UserBookProgressEntity> cap = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(progressRepo).save(cap.capture());
+        var saved = cap.getValue();
+        assertEquals(10.7F, saved.getKoreaderProgressPercent(), 0.0001F);
+        assertEquals("epubcfi(/6/2!/4/2)", saved.getEpubProgress());
+        assertEquals(10.7F, saved.getEpubProgressPercent(), 0.0001F);
+        assertEquals(ReadStatus.READING, saved.getReadStatus());
+        verify(hardcoverSyncService).syncProgressToHardcover(9L, 10.7F, 42L);
+    }
+
+    @Test
+    void saveProgress_repairsDoubleScaledPercentBeforeSaving() {
+        when(details.isSyncEnabled()).thenReturn(true);
+        var book = new BookEntity();
+        book.setId(10L);
+        when(bookRepo.findByCurrentHash("scaled")).thenReturn(Optional.of(book));
+        var user = new BookLoreUserEntity();
+        user.setId(42L);
+        when(userRepo.findById(42L)).thenReturn(Optional.of(user));
+        when(progressRepo.findByUserIdAndBookId(42L, 10L)).thenReturn(Optional.of(new UserBookProgressEntity()));
+
+        var dto = KoreaderProgress.builder()
+                .document("scaled").progress("z").percentage(1070.0F).device("d").device_id("id").build();
+        service.saveProgress("scaled", dto);
+
+        ArgumentCaptor<UserBookProgressEntity> cap = ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(progressRepo).save(cap.capture());
+        var saved = cap.getValue();
+        assertEquals(10.7F, saved.getKoreaderProgressPercent(), 0.0001F);
+        assertEquals(ReadStatus.READING, saved.getReadStatus());
     }
 
     @Test
@@ -271,8 +344,9 @@ class KoreaderServiceTest {
         method.setAccessible(true);
 
         assertNull(method.invoke(service, new Object[]{null}));
-        assertEquals(50.0f, (Float) method.invoke(service, 0.5f));
-        assertEquals(100.0f, (Float) method.invoke(service, 1.0f));
-        assertEquals(42.0f, (Float) method.invoke(service, 42.0f));
+        assertEquals(50.0f, (Float) method.invoke(service, 0.5f), 0.0001f);
+        assertEquals(100.0f, (Float) method.invoke(service, 1.0f), 0.0001f);
+        assertEquals(42.0f, (Float) method.invoke(service, 42.0f), 0.0001f);
+        assertEquals(10.7f, (Float) method.invoke(service, 1070.0f), 0.0001f);
     }
 }

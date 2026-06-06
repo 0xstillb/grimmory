@@ -46,9 +46,10 @@ public class KoreaderService {
         KoreaderUserDetails authDetails = getAuthDetailsWithSyncCheck();
         BookEntity book = findBookByHash(bookHash);
         UserBookProgressEntity progress = findUserProgress(authDetails.getBookLoreUserId(), book.getId());
+        Float normalizedPercent = normalizeProgressPercent(progress.getKoreaderProgressPercent());
 
         log.info("getProgress: fetched progress='{}' percentage={} for userId={} bookHash={}",
-                progress.getKoreaderProgress(), progress.getKoreaderProgressPercent(),
+                progress.getKoreaderProgress(), normalizedPercent,
                 authDetails.getBookLoreUserId(), bookHash);
 
         Long timestamp = progress.getKoreaderLastSyncTime() != null
@@ -59,7 +60,7 @@ public class KoreaderService {
                 .timestamp(timestamp)
                 .document(bookHash)
                 .progress(progress.getKoreaderProgress())
-                .percentage(progress.getKoreaderProgressPercent())
+                .percentage(normalizedPercent)
                 .device("BookLore")
                 .device_id("BookLore")
                 .build();
@@ -72,7 +73,8 @@ public class KoreaderService {
         BookLoreUserEntity user = findBookLoreUser(authDetails.getBookLoreUserId());
 
         UserBookProgressEntity userProgress = getOrCreateUserProgress(user, book);
-        Float previousProgressPercent = userProgress.getKoreaderProgressPercent();
+        Float previousProgressPercent = normalizeProgressPercent(userProgress.getKoreaderProgressPercent());
+        Float currentProgressPercent = normalizeProgressPercent(koProgress.getPercentage());
         ReadStatus previousReadStatus = userProgress.getReadStatus();
         updateProgressData(userProgress, koProgress, authDetails.isSyncWithWebReader(), book);
 
@@ -85,10 +87,9 @@ public class KoreaderService {
 
         // Sync progress to Hardcover asynchronously (if enabled for this user)
         // But only if the progress percentage has changed from last time, or the read status has changed
-        if (koProgress.getPercentage() != null && (!koProgress.getPercentage().equals(previousProgressPercent)
+        if (currentProgressPercent != null && (!currentProgressPercent.equals(previousProgressPercent)
                 || userProgress.getReadStatus() != previousReadStatus)) {
-            Float progressPercent = normalizeProgressPercent(koProgress.getPercentage());
-            hardcoverSyncService.syncProgressToHardcover(book.getId(), progressPercent, authDetails.getBookLoreUserId());
+            hardcoverSyncService.syncProgressToHardcover(book.getId(), currentProgressPercent, authDetails.getBookLoreUserId());
         }
     }
 
@@ -129,8 +130,9 @@ public class KoreaderService {
     }
 
     private void updateProgressData(UserBookProgressEntity userProgress, KoreaderProgress koProgress, boolean syncWithWebReader, BookEntity book) {
+        Float normalizedPercent = normalizeProgressPercent(koProgress.getPercentage());
         userProgress.setKoreaderProgress(koProgress.getProgress());
-        userProgress.setKoreaderProgressPercent(koProgress.getPercentage());
+        userProgress.setKoreaderProgressPercent(normalizedPercent);
         userProgress.setKoreaderDevice(koProgress.getDevice());
         userProgress.setKoreaderDeviceId(koProgress.getDevice_id());
         userProgress.setKoreaderLastSyncTime(Instant.now());
@@ -139,14 +141,8 @@ public class KoreaderService {
             try {
                 String cfi = epubCfiService.convertXPointerToCfi(book.getFullFilePath(), koProgress.getProgress());
 
-                float percent = koProgress.getPercentage() * 100f;
-                float rounded = BigDecimal
-                        .valueOf(percent)
-                        .setScale(1, RoundingMode.HALF_UP)
-                        .floatValue();
-
                 userProgress.setEpubProgress(cfi);
-                userProgress.setEpubProgressPercent(rounded);
+                userProgress.setEpubProgressPercent(roundProgressPercent(normalizedPercent));
 
                 log.info("Converted xpointer to CFI for BookLore reader sync: {}", cfi);
             } catch (Exception e) {
@@ -154,14 +150,13 @@ public class KoreaderService {
             }
         }
 
-        updateReadStatus(userProgress, koProgress.getPercentage());
+        updateReadStatus(userProgress, normalizedPercent);
     }
 
-    private void updateReadStatus(UserBookProgressEntity userProgress, Float progressFraction) {
-        if (progressFraction == null) {
+    private void updateReadStatus(UserBookProgressEntity userProgress, Float progressPercent) {
+        if (progressPercent == null) {
             return;
         }
-        double progressPercent = progressFraction * 100.0;
         if (progressPercent >= 99.5) {
             userProgress.setReadStatus(ReadStatus.READ);
             userProgress.setDateFinished(Instant.now());
@@ -176,10 +171,23 @@ public class KoreaderService {
         if (progress == null) {
             return null;
         }
-        if (progress <= 1.0f) {
-            return progress * 100.0f;
+        float normalized = progress;
+        if (normalized <= 1.0f) {
+            normalized *= 100.0f;
+        } else if (normalized > 100.0f) {
+            normalized /= 100.0f;
         }
-        return progress;
+        normalized = Math.max(normalized, 0.0f);
+        return Math.min(normalized, 100.0f);
+    }
+
+    private Float roundProgressPercent(Float progressPercent) {
+        if (progressPercent == null) {
+            return null;
+        }
+        return BigDecimal.valueOf(progressPercent)
+                .setScale(1, RoundingMode.HALF_UP)
+                .floatValue();
     }
 
     private KoreaderUserDetails getAuthDetails() {

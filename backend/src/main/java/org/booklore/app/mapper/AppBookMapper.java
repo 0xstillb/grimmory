@@ -217,19 +217,19 @@ public interface AppBookMapper {
             return null;
         }
         if (progress.getKoreaderProgressPercent() != null) {
-            return progress.getKoreaderProgressPercent();
+            return normalizePercentage(progress.getKoreaderProgressPercent());
         }
         if (progress.getKoboProgressPercent() != null) {
-            return progress.getKoboProgressPercent();
+            return normalizePercentage(progress.getKoboProgressPercent());
         }
         if (progress.getEpubProgressPercent() != null) {
-            return progress.getEpubProgressPercent();
+            return normalizePercentage(progress.getEpubProgressPercent());
         }
         if (progress.getPdfProgressPercent() != null) {
-            return progress.getPdfProgressPercent();
+            return normalizePercentage(progress.getPdfProgressPercent());
         }
         if (progress.getCbxProgressPercent() != null) {
-            return progress.getCbxProgressPercent();
+            return normalizePercentage(progress.getCbxProgressPercent());
         }
         return null;
     }
@@ -242,7 +242,7 @@ public interface AppBookMapper {
         return AppBookDetail.EpubProgress.builder()
                 .cfi(progress.getEpubProgress())
                 .href(progress.getEpubProgressHref())
-                .percentage(progress.getEpubProgressPercent())
+                .percentage(normalizePercentage(progress.getEpubProgressPercent()))
                 .updatedAt(progress.getLastReadTime())
                 .build();
     }
@@ -254,7 +254,7 @@ public interface AppBookMapper {
         }
         return AppBookDetail.PdfProgress.builder()
                 .page(progress.getPdfProgress())
-                .percentage(progress.getPdfProgressPercent())
+                .percentage(normalizePercentage(progress.getPdfProgressPercent()))
                 .updatedAt(progress.getLastReadTime())
                 .build();
     }
@@ -266,7 +266,7 @@ public interface AppBookMapper {
         }
         return AppBookDetail.CbxProgress.builder()
                 .page(progress.getCbxProgress())
-                .percentage(progress.getCbxProgressPercent())
+                .percentage(normalizePercentage(progress.getCbxProgressPercent()))
                 .updatedAt(progress.getLastReadTime())
                 .build();
     }
@@ -277,7 +277,7 @@ public interface AppBookMapper {
             return null;
         }
         return AppBookDetail.KoreaderProgress.builder()
-                .percentage(progress.getKoreaderProgressPercent())
+                .percentage(normalizePercentage(progress.getKoreaderProgressPercent()))
                 .device(progress.getKoreaderDevice())
                 .deviceId(progress.getKoreaderDeviceId())
                 .lastSyncTime(progress.getKoreaderLastSyncTime())
@@ -295,9 +295,25 @@ public interface AppBookMapper {
         return AppBookDetail.AudiobookProgress.builder()
                 .positionMs(parseLongOrNull(fileProgress.getPositionData()))
                 .trackIndex(parseIntOrNull(fileProgress.getPositionHref()))
-                .percentage(fileProgress.getProgressPercent())
+                .percentage(normalizePercentage(fileProgress.getProgressPercent()))
                 .updatedAt(fileProgress.getLastReadTime())
                 .build();
+    }
+
+    default Float normalizePercentage(Float progress) {
+        if (progress == null) {
+            return null;
+        }
+
+        float normalized = progress;
+        if (normalized <= 1.0f) {
+            normalized *= 100.0f;
+        } else if (normalized > 100.0f) {
+            normalized /= 100.0f;
+        }
+
+        normalized = Math.max(normalized, 0.0f);
+        return Math.min(normalized, 100.0f);
     }
 
     default Long parseLongOrNull(String value) {
