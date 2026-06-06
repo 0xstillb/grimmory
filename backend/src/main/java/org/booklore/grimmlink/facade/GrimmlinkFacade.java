@@ -56,6 +56,7 @@ public class GrimmlinkFacade {
     private final BookMapper bookMapper;
     private final ObjectMapper objectMapper;
 
+    @Transactional(readOnly = true)
     public Map<String, Object> authorize() {
         Map<String, String> upstreamResponse = koreaderService.authorizeUser().getBody();
         BookLoreUserEntity reader = requireCurrentReaderEntity(false);
