@@ -86,12 +86,25 @@ export class BookCardComponent {
 
 
 
+  private isPrimaryProgressFromKoReader(book = this.book()): boolean {
+    return book.pdfProgress?.percentage == null
+      && book.cbxProgress?.percentage == null
+      && book.koreaderProgress?.percentage != null;
+  }
+
   readonly progressPercentage = computed(() => {
     const b = this.book();
-    return b.epubProgress?.percentage ?? b.pdfProgress?.percentage ?? b.cbxProgress?.percentage ?? null;
+    return b.pdfProgress?.percentage
+      ?? b.cbxProgress?.percentage
+      ?? b.koreaderProgress?.percentage
+      ?? b.epubProgress?.percentage
+      ?? null;
   });
 
-  readonly koProgressPercentage = computed(() => this.book().koreaderProgress?.percentage ?? null);
+  readonly koProgressPercentage = computed(() => {
+    const ko = this.book().koreaderProgress?.percentage ?? null;
+    return ko !== null && !this.isPrimaryProgressFromKoReader() ? ko : null;
+  });
   readonly koboProgressPercentage = computed(() => this.book().koboProgress?.percentage ?? null);
 
   readonly hasProgress = computed(() =>
@@ -141,7 +154,12 @@ export class BookCardComponent {
     const p = this.progressPercentage();
     const ko = this.koProgressPercentage();
     const kobo = this.koboProgressPercentage();
-    if (p !== null) parts.push(`${p}% (Grimmory)`);
+    if (p !== null) {
+      const label = this.isPrimaryProgressFromKoReader()
+        ? 'KOReader'
+        : 'Grimmory';
+      parts.push(`${p}% (${label})`);
+    }
     if (ko !== null) parts.push(`${ko}% (KOReader)`);
     if (kobo !== null) parts.push(`${kobo}% (Kobo)`);
     return parts.join(' | ');

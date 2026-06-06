@@ -981,9 +981,6 @@ export class MetadataViewerComponent implements OnInit, AfterViewChecked {
   }
 
   getProgressPercent(book: Book): number | null {
-    if (book.epubProgress?.percentage != null) {
-      return book.epubProgress.percentage;
-    }
     if (book.pdfProgress?.percentage != null) {
       return book.pdfProgress.percentage;
     }
@@ -993,11 +990,24 @@ export class MetadataViewerComponent implements OnInit, AfterViewChecked {
     if (book.audiobookProgress?.percentage != null) {
       return book.audiobookProgress.percentage;
     }
+    if (book.koreaderProgress?.percentage != null) {
+      return book.koreaderProgress.percentage;
+    }
+    if (book.epubProgress?.percentage != null) {
+      return book.epubProgress.percentage;
+    }
     return null;
   }
 
+  private isPrimaryProgressFromKoReader(book: Book): boolean {
+    return book.pdfProgress?.percentage == null
+      && book.cbxProgress?.percentage == null
+      && book.audiobookProgress?.percentage == null
+      && book.koreaderProgress?.percentage != null;
+  }
+
   getKoProgressPercent(book: Book): number | null {
-    if (book.koreaderProgress?.percentage != null) {
+    if (book.koreaderProgress?.percentage != null && !this.isPrimaryProgressFromKoReader(book)) {
       return book.koreaderProgress.percentage;
     }
     return null;

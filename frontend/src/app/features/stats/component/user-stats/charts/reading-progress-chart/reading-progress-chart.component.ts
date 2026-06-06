@@ -186,9 +186,9 @@ export class ReadingProgressChartComponent {
 
   private getBookProgress(book: Book): number {
     if (book.pdfProgress?.percentage) return book.pdfProgress.percentage;
-    if (book.epubProgress?.percentage) return book.epubProgress.percentage;
     if (book.cbxProgress?.percentage) return book.cbxProgress.percentage;
     if (book.koreaderProgress?.percentage) return book.koreaderProgress.percentage;
+    if (book.epubProgress?.percentage) return book.epubProgress.percentage;
     if (book.koboProgress?.percentage) return book.koboProgress.percentage;
     return 0;
   }

@@ -80,7 +80,7 @@ describe('ReadingProgressChartComponent', () => {
       bookWithProgress({pdfProgress: {page: 25, percentage: 25}}),
       bookWithProgress({pdfProgress: {page: 0, percentage: 0}, epubProgress: {cfi: 'epub-26', percentage: 26}}),
       bookWithProgress({cbxProgress: {page: 50, percentage: 50}}),
-      bookWithProgress({epubProgress: {cfi: 'epub-51', percentage: 51}}),
+      bookWithProgress({epubProgress: {cfi: 'epub-51', percentage: 51}, koreaderProgress: {percentage: 80}}),
       bookWithProgress({pdfProgress: {page: 0, percentage: 0}, cbxProgress: {page: 75, percentage: 75}}),
       bookWithProgress({koreaderProgress: {percentage: 76}}),
       bookWithProgress({pdfProgress: {page: 0, percentage: 0}, koreaderProgress: {percentage: 99}, koboProgress: {percentage: 100}}),
@@ -91,7 +91,7 @@ describe('ReadingProgressChartComponent', () => {
     const chartData = component.chartData();
 
     expect(chartData.labels).toEqual(['0%', '1-25%', '26-50%', '51-75%', '76-99%', '100%']);
-    expect(chartData.datasets[0]?.data).toEqual([1, 2, 2, 2, 2, 1]);
+    expect(chartData.datasets[0]?.data).toEqual([1, 2, 2, 1, 3, 1]);
     expect(chartData.datasets[0]?.label).toBe('statsUser.readingProgress.booksByProgress');
     expect(chartData.datasets[0]?.backgroundColor).toEqual(chartColors);
     expect(chartData.datasets[0]?.borderColor).toBeUndefined();

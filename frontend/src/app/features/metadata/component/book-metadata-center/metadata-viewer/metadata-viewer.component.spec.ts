@@ -498,4 +498,16 @@ describe('MetadataViewerComponent', () => {
     expect(component.getChannelLabel(2)).toBe('metadata.viewer.channelStereo');
     expect(component.getChannelLabel(6)).toBe('metadata.viewer.channelMultiple:count=6');
   });
+
+  it('prefers KOReader native progress for epub books and suppresses duplicate KOReader bars', () => {
+    const component = createComponent();
+    const book = createBook({
+      epubProgress: {cfi: '/body/DocFragment[5]/body/h1/text().0', percentage: 5.7},
+      koreaderProgress: {percentage: 42}
+    });
+
+    expect(component.getProgressPercent(book)).toBe(42);
+    expect(component.getKoProgressPercent(book)).toBeNull();
+    expect(component.getProgressCount(book)).toBe(1);
+  });
 });

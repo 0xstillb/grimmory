@@ -303,6 +303,27 @@ describe('BookCardComponent', () => {
     expect(component.titleTooltip()).toContain('Volume One');
   });
 
+  it('prefers KOReader native progress for epub books without duplicating the KOReader bar', () => {
+    ref.setInput('book', makeBook({
+      id: 81,
+      primaryFile: {
+        id: 811,
+        bookId: 81,
+        bookType: 'EPUB',
+        extension: 'epub',
+        filePath: 'books/native-progress.epub',
+      },
+      epubProgress: {cfi: '/body/DocFragment[5]/body/p[1]/text().0', percentage: 5.7},
+      koreaderProgress: {percentage: 42},
+      readStatus: ReadStatus.READING,
+    }));
+    fixture.detectChanges();
+
+    expect(component.progressPercentage()).toBe(42);
+    expect(component.koProgressPercentage()).toBeNull();
+    expect(component.progressTooltip()).toBe('42% (KOReader)');
+  });
+
   it('prefers the audiobook thumbnail for square covers when the book has an audiobook format', () => {
     ref.setInput('book', makeBook({
       id: 9,

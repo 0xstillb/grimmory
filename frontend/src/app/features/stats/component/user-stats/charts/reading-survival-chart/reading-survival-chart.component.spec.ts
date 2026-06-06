@@ -62,4 +62,33 @@ describe('ReadingSurvivalChartComponent', () => {
     expect(component.chartData().labels).toEqual(['0%', '10%', '25%', '50%', '75%', '90%', '100%']);
     expect(component.chartData().datasets[0]?.label).toBe('statsUser.readingSurvival.survivalRate');
   });
+
+  it('prefers KOReader native progress over epub progress when both are present', () => {
+    const component = createComponent([
+      {id: 1, libraryId: 1, libraryName: 'Alpha', pdfProgress: {page: 1, percentage: 5}} as Book,
+      {
+        id: 2,
+        libraryId: 1,
+        libraryName: 'Alpha',
+        epubProgress: {cfi: 'cfi', percentage: 15},
+        koreaderProgress: {percentage: 80}
+      } as Book,
+      {id: 3, libraryId: 1, libraryName: 'Alpha', koboProgress: {percentage: 100}} as Book,
+    ]);
+
+    expect(component.totalStarted()).toBe(3);
+    expect(component.completionRate()).toBe(33);
+    expect(component.medianDropout()).toBe('75-90%');
+    expect(component.dangerZoneRange()).toBe('0-10%');
+    expect(component.dangerZoneDrop()).toBe('-33%');
+    expect(component.chartData().datasets[0]?.data).toEqual([
+      100,
+      66.66666666666666,
+      66.66666666666666,
+      66.66666666666666,
+      66.66666666666666,
+      33.33333333333333,
+      33.33333333333333
+    ]);
+  });
 });

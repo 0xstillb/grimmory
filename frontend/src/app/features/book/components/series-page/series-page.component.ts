@@ -558,11 +558,11 @@ export class SeriesPageComponent implements AfterViewChecked {
   }
 
   getBookProgress(book: Book): number | null {
-    const progress = book.epubProgress?.percentage
-      ?? book.pdfProgress?.percentage
+    const progress = book.pdfProgress?.percentage
       ?? book.cbxProgress?.percentage
       ?? book.audiobookProgress?.percentage
       ?? book.koreaderProgress?.percentage
+      ?? book.epubProgress?.percentage
       ?? book.koboProgress?.percentage;
     const normalized = this.normalizeProgressPercent(progress);
     if (normalized == null || normalized <= 0) return null;
@@ -583,11 +583,11 @@ export class SeriesPageComponent implements AfterViewChecked {
   }
 
   private getRawBookProgress(book: Book): number | null {
-    return book.epubProgress?.percentage
-      ?? book.pdfProgress?.percentage
+    return book.pdfProgress?.percentage
       ?? book.cbxProgress?.percentage
       ?? book.audiobookProgress?.percentage
       ?? book.koreaderProgress?.percentage
+      ?? book.epubProgress?.percentage
       ?? book.koboProgress?.percentage
       ?? null;
   }

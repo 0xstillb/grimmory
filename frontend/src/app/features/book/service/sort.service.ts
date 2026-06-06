@@ -98,11 +98,11 @@ export class SortService {
     readStatus: (book) => book.readStatus ? (SortService.READ_STATUS_RANK[book.readStatus] ?? null) : null,
     dateFinished: (book) => book.dateFinished ? new Date(book.dateFinished).getTime() : null,
     readingProgress: (book) =>
-      book.epubProgress?.percentage
-      ?? book.pdfProgress?.percentage
+      book.pdfProgress?.percentage
       ?? book.cbxProgress?.percentage
       ?? book.audiobookProgress?.percentage
       ?? book.koreaderProgress?.percentage
+      ?? book.epubProgress?.percentage
       ?? book.koboProgress?.percentage
       ?? null,
     bookType: (book) => book.primaryFile?.bookType || null,
