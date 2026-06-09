@@ -53,6 +53,26 @@ class AdjacentOpfMetadataAugmenterTest {
     }
 
     @Test
+    void skipsAllMetadataWhenAllFieldsLocked() {
+        var book = book();
+        book.getMetadata().setTitle("Preserved title");
+        book.getMetadata().setPublisher("Preserved publisher");
+        book.getMetadata().applyLockToAllFields(true);
+
+        augmenter.apply(BookMetadata.builder()
+                .title("OPF Title")
+                .publisher("OPF Publisher")
+                .description("New description")
+                .language("en")
+                .build(), book);
+
+        assertThat(book.getMetadata().getTitle()).isEqualTo("Preserved title");
+        assertThat(book.getMetadata().getPublisher()).isEqualTo("Preserved publisher");
+        assertThat(book.getMetadata().getDescription()).isNull();
+        assertThat(book.getMetadata().getLanguage()).isNull();
+    }
+
+    @Test
     void respectsLockedFields() {
         var book = book();
         book.getMetadata().setTitle("Locked title");

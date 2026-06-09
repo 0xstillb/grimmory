@@ -33,6 +33,10 @@ public class AdjacentOpfMetadataAugmenter implements BookScanMetadataAugmenter {
         }
 
         BookMetadataEntity target = bookEntity.getMetadata();
+        if (target.areAllFieldsLocked()) {
+            log.debug("Skipping OPF metadata augment for {}: all fields locked", bookEntity.getId());
+            return;
+        }
         if (!locked(target.getTitleLocked()) && StringUtils.isNotBlank(source.getTitle())) {
             target.setTitle(FileService.truncate(source.getTitle(), 1000));
         }
