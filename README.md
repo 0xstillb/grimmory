@@ -1,5 +1,6 @@
 > [!NOTE]
 > Grimmory is an independent community fork of Booklore.
+> **Flyway migrations:** Fork-specific migrations use the `V9001__` prefix to avoid conflicts with upstream `V*__` migrations.
 
 <div align="center">
 
