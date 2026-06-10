@@ -29,16 +29,22 @@ public class GrimmlinkV1ShelfController {
     }
 
     @GetMapping("/{shelfId}/books")
-    public ResponseEntity<List<GrimmlinkBookSummary>> listShelfBooks(@PathVariable Long shelfId) {
-        return ResponseEntity.ok(grimmlinkFacade.listShelfBooks("regular", shelfId));
+    public ResponseEntity<List<GrimmlinkBookSummary>> listShelfBooks(@PathVariable Long shelfId,
+                                                                     @RequestParam(required = false) Integer limit,
+                                                                     @RequestParam(required = false) Integer offset,
+                                                                     @RequestParam(required = false) String cursor) {
+        return ResponseEntity.ok(grimmlinkFacade.listShelfBooks("regular", shelfId, limit, offset, cursor));
     }
 
     @GetMapping("/{shelfType}/{shelfId}/books")
     public ResponseEntity<List<GrimmlinkBookSummary>> listShelfBooksByType(@PathVariable String shelfType,
-                                                                          @PathVariable Long shelfId) {
+                                                                          @PathVariable Long shelfId,
+                                                                          @RequestParam(required = false) Integer limit,
+                                                                          @RequestParam(required = false) Integer offset,
+                                                                          @RequestParam(required = false) String cursor) {
         String debugId = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         try {
-            return ResponseEntity.ok(grimmlinkFacade.listShelfBooks(shelfType, shelfId));
+            return ResponseEntity.ok(grimmlinkFacade.listShelfBooks(shelfType, shelfId, limit, offset, cursor));
         } catch (APIException ex) {
             log.error("GrimmLink shelf fetch failed debugId={} shelfType={} shelfId={} status={} message={}",
                     debugId, shelfType, shelfId, ex.getStatus(), ex.getMessage(), ex);

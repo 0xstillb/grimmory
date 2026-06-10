@@ -123,11 +123,11 @@ class GrimmlinkV1ControllersTest {
         var book = GrimmlinkBookSummary.builder().bookId(2L).title("Book").build();
         var removal = GrimmlinkShelfRemovalResponse.builder().shelfId(1L).bookId(2L).removed(true).status("removed").build();
         when(grimmlinkFacade.listShelves(null)).thenReturn(List.of(shelf));
-        when(grimmlinkFacade.listShelfBooks("magic", 1L)).thenReturn(List.of(book));
+        when(grimmlinkFacade.listShelfBooks("magic", 1L, null, null, null)).thenReturn(List.of(book));
         when(grimmlinkFacade.removeBookFromShelf("regular", 1L, 2L)).thenReturn(removal);
 
         assertEquals(List.of(shelf), shelfController.listShelves(null).getBody());
-        assertEquals(List.of(book), shelfController.listShelfBooksByType("magic", 1L).getBody());
+        assertEquals(List.of(book), shelfController.listShelfBooksByType("magic", 1L, null, null, null).getBody());
         assertEquals(removal, shelfController.removeBookFromShelf(1L, 2L).getBody());
     }
 

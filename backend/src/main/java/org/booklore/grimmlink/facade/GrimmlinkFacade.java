@@ -216,34 +216,37 @@ public class GrimmlinkFacade {
     }
 
     @Transactional(readOnly = true)
-    public List<GrimmlinkBookSummary> listShelfBooks(String shelfType, Long shelfId) {
+    public List<GrimmlinkBookSummary> listShelfBooks(String shelfType, Long shelfId, Integer limit, Integer offset, String cursor) {
         BookLoreUserEntity reader = requireCurrentReaderEntity(true);
+        List<GrimmlinkBookSummary> books;
         if ("magic".equals(normalizeShelfType(shelfType))) {
             List<Long> bookIds = magicShelfBookService.getBookIdsByMagicShelfId(reader.getId(), shelfId);
             if (bookIds == null || bookIds.isEmpty()) {
                 return List.of();
             }
-            List<BookEntity> books = bookRepository.findAllForSummaryByIds(bookIds.stream().distinct().toList());
-            Map<Long, BookEntity> byId = books.stream().collect(Collectors.toMap(BookEntity::getId, book -> book, (left, right) -> left));
-            return bookIds.stream().distinct()
+            List<BookEntity> bookEntities = bookRepository.findAllForSummaryByIds(bookIds.stream().distinct().toList());
+            Map<Long, BookEntity> byId = bookEntities.stream().collect(Collectors.toMap(BookEntity::getId, book -> book, (left, right) -> left));
+            books = bookIds.stream().distinct()
                     .map(byId::get)
                     .filter(Objects::nonNull)
                     .filter(book -> canAccessBook(reader, book))
                     .map(this::toBookSummary)
                     .toList();
+        } else {
+            ShelfEntity shelf = shelfRepository.findByIdWithUser(shelfId)
+                    .orElseThrow(() -> ApiError.SHELF_NOT_FOUND.createException(shelfId));
+            if (!canReadShelf(reader, shelf)) {
+                throw ApiError.FORBIDDEN.createException("Shelf is not accessible to the authenticated user");
+            }
+            books = bookRepository.findAllWithMetadataByShelfId(shelfId).stream()
+                    .filter(book -> canAccessBook(reader, book))
+                    .map(this::toBookSummary)
+                    .toList();
         }
-
-        ShelfEntity shelf = shelfRepository.findByIdWithUser(shelfId)
-                .orElseThrow(() -> ApiError.SHELF_NOT_FOUND.createException(shelfId));
-        if (!canReadShelf(reader, shelf)) {
-            throw ApiError.FORBIDDEN.createException("Shelf is not accessible to the authenticated user");
-        }
-        return bookRepository.findAllWithMetadataByShelfId(shelfId).stream()
-                .filter(book -> canAccessBook(reader, book))
-                .map(this::toBookSummary)
-                .toList();
+        return applyShelfPagination(books, limit, offset);
     }
 
+    @Transactional(readOnly = true)
     public ResponseEntity<Resource> downloadBook(Long bookId) {
         BookLoreUserEntity reader = requireCurrentReaderEntity(true);
         loadAccessibleBookById(reader, bookId);
@@ -649,6 +652,19 @@ public class GrimmlinkFacade {
         } catch (NoSuchAlgorithmException e) {
             return Integer.toHexString(Objects.hashCode(value));
         }
+    }
+
+    private List<GrimmlinkBookSummary> applyShelfPagination(List<GrimmlinkBookSummary> books, Integer limit, Integer offset) {
+        if (limit == null && offset == null) {
+            return books;
+        }
+        int safeLimit = (limit != null && limit > 0) ? Math.min(limit, 100) : 100;
+        int safeOffset = (offset != null && offset >= 0) ? offset : 0;
+        if (safeOffset >= books.size()) {
+            return List.of();
+        }
+        int toIndex = Math.min(safeOffset + safeLimit, books.size());
+        return books.subList(safeOffset, toIndex);
     }
 
     private GrimmlinkBookSummary toBookSummary(BookEntity book) {
