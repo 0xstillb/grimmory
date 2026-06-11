@@ -2,6 +2,7 @@ package org.booklore.grimmlink.facade;
 
 import org.booklore.config.security.userdetails.KoreaderUserDetails;
 import org.booklore.grimmlink.repository.GrimmlinkMetadataItemRepository;
+import org.booklore.grimmlink.service.GrimmlinkHashMatcher;
 import org.booklore.mapper.BookMapper;
 import org.booklore.model.dto.request.ReadingSessionRequest;
 import org.booklore.model.entity.*;
@@ -45,6 +46,7 @@ class GrimmlinkFacadeReadingSessionTest {
     @Mock private BookDownloadService bookDownloadService;
     @Mock private MagicShelfBookService magicShelfBookService;
     @Mock private GrimmlinkMetadataItemRepository metadataItemRepository;
+    @Mock private GrimmlinkHashMatcher hashMatcher;
     @Mock private BookMapper bookMapper;
     @Mock private ObjectMapper objectMapper;
 

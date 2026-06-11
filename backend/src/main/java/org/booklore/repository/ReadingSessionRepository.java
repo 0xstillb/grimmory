@@ -14,11 +14,30 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 import java.time.LocalDateTime;
 
 @Repository
 public interface ReadingSessionRepository extends JpaRepository<ReadingSessionEntity, Long> {
+
+    @Query("""
+            SELECT rs
+            FROM ReadingSessionEntity rs
+            WHERE rs.user.id = :userId
+            AND rs.book.id = :bookId
+            AND rs.bookHash = :bookHash
+            AND rs.startTime = :startTime
+            AND rs.endTime = :endTime
+            AND rs.deviceId = :deviceId
+            """)
+    Optional<ReadingSessionEntity> findDuplicate(
+            @Param("userId") Long userId,
+            @Param("bookId") Long bookId,
+            @Param("bookHash") String bookHash,
+            @Param("startTime") Instant startTime,
+            @Param("endTime") Instant endTime,
+            @Param("deviceId") String deviceId);
 
     @QueryHints(@QueryHint(name = "org.hibernate.fetchSize", value = "200"))
     @Query("""

@@ -1,5 +1,6 @@
 package org.booklore.grimmlink.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Builder;
 import lombok.Data;
 
@@ -15,8 +16,12 @@ public class GrimmlinkReadingSessionBatchResponse {
 
     @Data
     @Builder
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class SessionResult {
+        private Integer index;
         private Long sessionId;
+        private String status;
+        private String message;
         private Instant startTime;
         private Instant endTime;
     }

@@ -8,6 +8,7 @@ import org.booklore.grimmlink.dto.*;
 import org.booklore.grimmlink.model.GrimmlinkMetadataItemEntity;
 import org.booklore.grimmlink.model.GrimmlinkMetadataItemType;
 import org.booklore.grimmlink.repository.GrimmlinkMetadataItemRepository;
+import org.booklore.grimmlink.service.GrimmlinkHashMatcher;
 import org.booklore.mapper.BookMapper;
 import org.booklore.model.dto.Book;
 import org.booklore.model.dto.progress.KoreaderProgress;
@@ -60,6 +61,7 @@ public class GrimmlinkFacade {
     private final BookDownloadService bookDownloadService;
     private final MagicShelfBookService magicShelfBookService;
     private final GrimmlinkMetadataItemRepository metadataItemRepository;
+    private final GrimmlinkHashMatcher hashMatcher;
     private final BookMapper bookMapper;
     private final ObjectMapper objectMapper;
 
@@ -96,7 +98,50 @@ public class GrimmlinkFacade {
         if (bookHash == null) {
             throw ApiError.GENERIC_BAD_REQUEST.createException("bookHash or document is required");
         }
-        koreaderService.saveProgress(bookHash, request);
+        BookLoreUserEntity reader = requireCurrentReaderEntity(true);
+        BookEntity book = hashMatcher.resolveAccessibleBookByHash(reader, bookHash);
+
+        // Save progress directly — no CFI generation (EPUB exact Web Reader bridge is out of scope)
+        UserBookProgressEntity progress = userBookProgressRepository
+                .findByUserIdAndBookId(reader.getId(), book.getId())
+                .orElseGet(UserBookProgressEntity::new);
+
+        boolean isNew = progress.getId() == null;
+        ReadStatus previousManualStatus = (!isNew && progress.getReadStatusModifiedTime() != null)
+                ? progress.getReadStatus() : null;
+
+        // Normalize percentage: 0.5 -> 50.0 before setting any fields
+        Float normalizedPercent = normalizePercent(request.getPercentage());
+
+        progress.setUser(reader);
+        progress.setBook(book);
+        progress.setKoreaderProgress(firstNonBlank(request.getRawKoreaderProgress(), request.getProgress()));
+        progress.setKoreaderProgressPercent(normalizedPercent);
+        progress.setKoreaderDevice(request.getDevice());
+        progress.setKoreaderDeviceId(request.getDevice_id());
+        progress.setKoreaderLastSyncTime(Instant.now());
+        progress.setLastReadTime(Instant.now());
+
+        // Derive read status from percentage only (no page ratio override)
+        if (normalizedPercent != null) {
+            // Preserve manual status if manually set and newer than this sync
+            if (previousManualStatus != null
+                    && previousManualStatus != ReadStatus.UNREAD
+                    && previousManualStatus != ReadStatus.READING) {
+                // Manual status (READ/PAUSED/ABANDONED/RE_READING) is preserved
+                progress.setReadStatus(previousManualStatus);
+            } else {
+                ReadStatus derived = deriveReadStatus(normalizedPercent);
+                progress.setReadStatus(derived);
+                if (derived == ReadStatus.READ && (isNew || progress.getDateFinished() == null)) {
+                    progress.setDateFinished(Instant.now());
+                }
+            }
+        }
+
+        userBookProgressRepository.save(progress);
+
+        // File-level progress (opaque KOReader-native data, no CFI)
         if (request.getCurrentPage() != null || request.getTotalPages() != null || request.getLocation() != null) {
             persistFileProgressIfPossible(bookHash, request);
         }
@@ -151,6 +196,17 @@ public class GrimmlinkFacade {
         BookLoreUserEntity reader = requireCurrentReaderEntity(true);
         BookEntity book = loadAccessibleBookById(reader, bookId);
         BookFileEntity file = resolveRequestedFile(book, request);
+
+        // Reject non-PDF formats
+        if (file != null && file.getBookType() != null && file.getBookType() != BookFileType.PDF) {
+            KoreaderProgress rejected = getPdfProgress(bookId);
+            rejected.setConflictDetected(false);
+            rejected.setUpdated(false);
+            rejected.setConversionStatus("unsupported_format");
+            rejected.setMessage("PDF bridge only supports PDF format, got " + file.getBookType().name());
+            return rejected;
+        }
+
         UserBookProgressEntity existing = userBookProgressRepository.findByUserIdAndBookId(reader.getId(), book.getId())
                 .orElse(null);
 
@@ -162,6 +218,7 @@ public class GrimmlinkFacade {
                 KoreaderProgress current = getPdfProgress(bookId);
                 current.setConflictDetected(true);
                 current.setUpdated(false);
+                current.setConversionStatus("remote_newer");
                 current.setMessage("Timestamp conflict: server lastReadTime differs from client expectedUpdatedAt");
                 return current;
             }
@@ -194,6 +251,7 @@ public class GrimmlinkFacade {
         KoreaderProgress result = getPdfProgress(bookId);
         result.setConflictDetected(false);
         result.setUpdated(true);
+        result.setConversionStatus("ok");
         return result;
     }
 
@@ -261,7 +319,7 @@ public class GrimmlinkFacade {
                     .map(this::toBookSummary)
                     .toList();
         }
-        return applyShelfPagination(books, limit, offset);
+        return applyShelfPagination(books, limit, offset, cursor);
     }
 
     @Transactional(readOnly = true)
@@ -369,16 +427,42 @@ public class GrimmlinkFacade {
     @Transactional
     public GrimmlinkMetadataBatchResponse syncMetadataBatch(GrimmlinkMetadataSyncRequest request) {
         GrimmlinkMetadataSyncRequest normalized = request == null ? new GrimmlinkMetadataSyncRequest() : request;
-        GrimmlinkMetadataSyncResponse push = syncMetadata(normalized);
-        GrimmlinkMetadataPullResponse pull = push.isOk()
-                ? pullMetadata(normalized.getBookId(), normalized.getBookHash(), normalized.getBookFileId(), normalized.getSince(), normalized.getCursor(), normalized.getLimit(), normalized.getType())
-                : GrimmlinkMetadataPullResponse.builder()
-                .bookId(push.getBookId())
-                .ok(false)
-                .since(normalized.getSince())
-                .limit(normalizeLimit(normalized.getLimit()))
-                .items(List.of())
-                .build();
+        String syncMode = normalized.getSyncMode();
+        syncMode = (syncMode != null) ? syncMode.trim().toLowerCase(java.util.Locale.ROOT) : "incremental";
+        if (!"push".equals(syncMode) && !"pull".equals(syncMode)) {
+            syncMode = "incremental";
+        }
+
+        GrimmlinkMetadataSyncResponse push = null;
+        GrimmlinkMetadataPullResponse pull = null;
+
+        if ("push".equals(syncMode) || "incremental".equals(syncMode)) {
+            push = syncMetadata(normalized);
+        }
+        if ("pull".equals(syncMode) || "incremental".equals(syncMode)) {
+            pull = pullMetadata(
+                    normalized.getBookId(), normalized.getBookHash(), normalized.getBookFileId(),
+                    normalized.getSince(), normalized.getCursor(), normalized.getLimit(), normalized.getType());
+        }
+
+        // Fill missing parts for response consistency
+        if (push == null) {
+            push = GrimmlinkMetadataSyncResponse.builder()
+                    .bookId(normalized.getBookId())
+                    .ok(true)
+                    .results(GrimmlinkMetadataSyncResults.builder().build())
+                    .build();
+        }
+        if (pull == null) {
+            pull = GrimmlinkMetadataPullResponse.builder()
+                    .bookId(normalized.getBookId())
+                    .ok(true)
+                    .since(normalized.getSince())
+                    .limit(normalizeLimit(normalized.getLimit()))
+                    .items(List.of())
+                    .build();
+        }
+
         return GrimmlinkMetadataBatchResponse.builder()
                 .ok(push.isOk() && pull.isOk())
                 .push(push)
@@ -390,6 +474,20 @@ public class GrimmlinkFacade {
     public void recordReadingSession(org.booklore.model.dto.request.ReadingSessionRequest request) {
         BookLoreUserEntity reader = requireCurrentReaderEntity(true);
         BookEntity book = loadAccessibleBookById(reader, request.getBookId());
+        String effectiveHash = resolveRequestBookHash(request.getBookHash(), book);
+        String effectiveDeviceId = trimToNull(request.getDeviceId());
+
+        // Check for duplicate before saving
+        Optional<ReadingSessionEntity> existing = readingSessionRepository.findDuplicate(
+                reader.getId(), book.getId(), effectiveHash,
+                request.getStartTime(), request.getEndTime(), effectiveDeviceId);
+        if (existing.isPresent()) {
+            log.info(
+                    "Grimmlink reading session duplicate (skipped): sessionId={}, userId={}, bookId={}, bookHash={}",
+                    existing.get().getId(), reader.getId(), book.getId(), effectiveHash);
+            return;
+        }
+
         ReadingSessionEntity session = readingSessionRepository.save(buildSession(reader, book, request, null));
         log.info(
                 "Grimmlink reading session persisted successfully: sessionId={}, userId={}, bookId={}, bookHash={}, bookType={}, duration={}s, device={}, deviceId={}",
@@ -408,30 +506,65 @@ public class GrimmlinkFacade {
     public GrimmlinkReadingSessionBatchResponse recordReadingSessionsBatch(GrimmlinkReadingSessionBatchRequest request) {
         BookLoreUserEntity reader = requireCurrentReaderEntity(true);
         BookEntity book = loadAccessibleBookById(reader, request.getBookId());
-        List<GrimmlinkReadingSessionBatchResponse.SessionResult> results = request.getSessions().stream()
-                .map(item -> {
-                    ReadingSessionEntity session = readingSessionRepository.save(buildSession(reader, book, request, item));
-                    return GrimmlinkReadingSessionBatchResponse.SessionResult.builder()
-                            .sessionId(session.getId())
-                            .startTime(session.getStartTime())
-                            .endTime(session.getEndTime())
-                            .build();
-                })
-                .toList();
+        String effectiveHash = resolveRequestBookHash(request.getBookHash(), book);
+        String effectiveDeviceId = trimToNull(request.getDeviceId());
+        int successCount = 0;
+
+        List<GrimmlinkReadingSessionBatchResponse.SessionResult> results = new ArrayList<>();
+        for (int i = 0; i < request.getSessions().size(); i++) {
+            GrimmlinkReadingSessionItemRequest item = request.getSessions().get(i);
+            try {
+                // Check for duplicate
+                Optional<ReadingSessionEntity> existing = readingSessionRepository.findDuplicate(
+                        reader.getId(), book.getId(), effectiveHash,
+                        item.getStartTime(), item.getEndTime(), effectiveDeviceId);
+                if (existing.isPresent()) {
+                    results.add(GrimmlinkReadingSessionBatchResponse.SessionResult.builder()
+                            .index(i)
+                            .sessionId(existing.get().getId())
+                            .status("duplicate")
+                            .message("Duplicate reading session")
+                            .startTime(item.getStartTime())
+                            .endTime(item.getEndTime())
+                            .build());
+                    successCount++;
+                    continue;
+                }
+
+                ReadingSessionEntity session = readingSessionRepository.save(buildSession(reader, book, request, item));
+                results.add(GrimmlinkReadingSessionBatchResponse.SessionResult.builder()
+                        .index(i)
+                        .sessionId(session.getId())
+                        .status("created")
+                        .startTime(session.getStartTime())
+                        .endTime(session.getEndTime())
+                        .build());
+                successCount++;
+            } catch (Exception e) {
+                log.warn("Grimmlink reading session batch item {} failed: {}", i, e.getMessage());
+                results.add(GrimmlinkReadingSessionBatchResponse.SessionResult.builder()
+                        .index(i)
+                        .status("error")
+                        .message(e.getMessage())
+                        .startTime(item.getStartTime())
+                        .endTime(item.getEndTime())
+                        .build());
+            }
+        }
         log.info(
                 "Grimmlink reading session batch persisted successfully: userId={}, bookId={}, bookHash={}, bookType={}, requested={}, saved={}, device={}, deviceId={}",
                 reader.getId(),
                 book.getId(),
-                resolveRequestBookHash(request.getBookHash(), book),
+                effectiveHash,
                 resolveBookType(request.getBookType(), book),
                 request.getSessions().size(),
-                results.size(),
+                successCount,
                 trimToNull(request.getDevice()),
                 trimToNull(request.getDeviceId())
         );
         return GrimmlinkReadingSessionBatchResponse.builder()
                 .totalRequested(request.getSessions().size())
-                .successCount(results.size())
+                .successCount(successCount)
                 .results(results)
                 .build();
     }
@@ -496,18 +629,7 @@ public class GrimmlinkFacade {
     }
 
     private BookEntity loadAccessibleBookByHash(BookLoreUserEntity reader, String bookHash) {
-        BookEntity book = bookRepository.findByCurrentHash(bookHash).orElse(null);
-        if (book == null) {
-            List<BookEntity> candidates = bookRepository.findAllByBookHash(bookHash);
-            book = candidates.isEmpty() ? null : candidates.get(0);
-        }
-        if (book == null) {
-            throw ApiError.GENERIC_NOT_FOUND.createException("Book not found for hash " + bookHash);
-        }
-        if (!canAccessBook(reader, book)) {
-            throw ApiError.FORBIDDEN.createException("Book is not accessible to the authenticated user");
-        }
-        return book;
+        return hashMatcher.resolveAccessibleBookByHash(reader, bookHash);
     }
 
     private BookEntity loadAccessibleBookById(BookLoreUserEntity reader, Long bookId) {
@@ -679,15 +801,29 @@ public class GrimmlinkFacade {
         }
     }
 
-    private List<GrimmlinkBookSummary> applyShelfPagination(List<GrimmlinkBookSummary> books, Integer limit, Integer offset) {
-        if (limit == null && offset == null) {
-            return books;
+    private List<GrimmlinkBookSummary> applyShelfPagination(List<GrimmlinkBookSummary> books, Integer limit, Integer offset, String cursor) {
+        // Apply cursor first: cursor = bookId to start after
+        int safeOffset = 0;
+        if (cursor != null && !cursor.isBlank()) {
+            try {
+                Long cursorBookId = Long.parseLong(cursor.trim());
+                for (int i = 0; i < books.size(); i++) {
+                    if (books.get(i).getBookId() != null && books.get(i).getBookId().equals(cursorBookId)) {
+                        safeOffset = i + 1;
+                        break;
+                    }
+                }
+            } catch (NumberFormatException e) {
+                log.debug("Invalid shelf cursor value: {}", cursor);
+            }
         }
-        int safeLimit = (limit != null && limit > 0) ? Math.min(limit, 100) : 100;
-        int safeOffset = (offset != null && offset >= 0) ? offset : 0;
+        if (offset != null && offset >= 0) {
+            safeOffset = offset;
+        }
         if (safeOffset >= books.size()) {
             return List.of();
         }
+        int safeLimit = (limit != null && limit > 0) ? Math.min(limit, 100) : 100;
         int toIndex = Math.min(safeOffset + safeLimit, books.size());
         return books.subList(safeOffset, toIndex);
     }
@@ -807,6 +943,22 @@ public class GrimmlinkFacade {
             return null;
         }
         return percentage <= 1.0f ? percentage * 100.0f : percentage;
+    }
+
+    /**
+     * Derive read status from normalized percentage (0–100 scale).
+     * Spec: >= 99 → READ, >= 1 → READING, 0 → UNREAD
+     */
+    private ReadStatus deriveReadStatus(Float normalizedPercent) {
+        if (normalizedPercent == null) {
+            return null;
+        }
+        if (normalizedPercent >= 99.0f) {
+            return ReadStatus.READ;
+        } else if (normalizedPercent >= 1.0f) {
+            return ReadStatus.READING;
+        }
+        return ReadStatus.UNREAD;
     }
 
     private Instant resolveClientTime(KoreaderProgress request) {

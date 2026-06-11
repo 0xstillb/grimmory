@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -214,8 +215,17 @@ public class KoreaderService {
     }
 
     private BookEntity findBookByHash(String bookHash) {
-        return bookRepository.findByCurrentHash(bookHash)
-                .orElseThrow(() -> ApiError.GENERIC_NOT_FOUND.createException("Book not found for hash " + bookHash));
+        BookEntity book = bookRepository.findByCurrentHash(bookHash).orElse(null);
+        if (book == null) {
+            List<BookEntity> candidates = bookRepository.findAllByBookHash(bookHash);
+            if (candidates != null && !candidates.isEmpty()) {
+                book = candidates.get(0);
+            }
+        }
+        if (book == null) {
+            throw ApiError.GENERIC_NOT_FOUND.createException("Book not found for hash " + bookHash);
+        }
+        return book;
     }
 
     private BookLoreUserEntity findBookLoreUser(long userId) {
