@@ -17,6 +17,15 @@ on:
         required: false
         default: false
         type: boolean
+      build_arm64:
+        description: 'Also publish linux/arm64; disabled by default for faster previews'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  ghcr_image: ghcr.io/${{ github.repository_owner }}/grimmory
+  ghcr_cache_ref: ghcr.io/${{ github.repository_owner }}/grimmory:buildcache
 
 jobs:
   build-and-push:
@@ -34,11 +43,13 @@ jobs:
           fetch-depth: 1
           ref: ${{ inputs.ref }}
 
-      - name: Generate Preview Tag
+      - name: Generate Preview Metadata
+        id: metadata
         env:
+          BUILD_ARM64: ${{ inputs.build_arm64 }}
           PR_NUMBER: ${{ inputs.pr_number }}
         run: |
-          short_sha=$(git rev-parse --short HEAD)
+          set -eu
 
           if [ -n "$PR_NUMBER" ]; then
             case "$PR_NUMBER" in
@@ -47,14 +58,37 @@ jobs:
                 exit 1
                 ;;
             esac
-            preview_tag="pr-${PR_NUMBER}-${short_sha}"
-          else
-            preview_tag="preview-${short_sha}"
           fi
 
-          echo "preview_tag=$preview_tag" >> "$GITHUB_ENV"
+          short_sha="$(git rev-parse --short=7 HEAD)"
+          preview_tag="preview-${short_sha}"
+          platforms="linux/amd64"
+
+          if [ "$BUILD_ARM64" = "true" ]; then
+            platforms="linux/amd64,linux/arm64"
+          fi
+
+          echo "preview_tag=${preview_tag}" >> "$GITHUB_ENV"
           echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          echo "Preview tag: $preview_tag"
+          echo "image_ref=${{ env.ghcr_image }}:${preview_tag}" >> "$GITHUB_ENV"
+
+          {
+            echo "platforms=${platforms}"
+            echo "image_tags<<EOF"
+            echo "${{ env.ghcr_image }}:preview"
+            echo "${{ env.ghcr_image }}:preview-latest"
+            echo "${{ env.ghcr_image }}:${preview_tag}"
+            if [ -n "$PR_NUMBER" ]; then
+              echo "${{ env.ghcr_image }}:pr-${PR_NUMBER}-${short_sha}"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set Up QEMU for Multi-Arch Builds
+        if: ${{ inputs.build_arm64 }}
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+        with:
+          cache-image: false
 
       - name: Set Up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
@@ -72,16 +106,15 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          platforms: linux/amd64
+          platforms: ${{ steps.metadata.outputs.platforms }}
           push: true
-          tags: |
-            ghcr.io/grimmory-tools/grimmory:${{ env.preview_tag }}
+          tags: ${{ steps.metadata.outputs.image_tags }}
           build-args: |
             APP_VERSION=${{ env.preview_tag }}
             APP_REVISION=${{ env.commit_sha }}
           cache-from: |
             type=gha,scope=image-shared
-            type=registry,ref=ghcr.io/grimmory-tools/grimmory:buildcache
+            type=registry,ref=${{ env.ghcr_cache_ref }}
 
       - name: Build and push Preview image with cache refresh
         if: ${{ inputs.refresh_shared_cache }}
@@ -89,14 +122,80 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          platforms: linux/amd64
+          platforms: ${{ steps.metadata.outputs.platforms }}
           push: true
           no-cache: true
-          tags: |
-            ghcr.io/grimmory-tools/grimmory:${{ env.preview_tag }}
+          tags: ${{ steps.metadata.outputs.image_tags }}
           build-args: |
             APP_VERSION=${{ env.preview_tag }}
             APP_REVISION=${{ env.commit_sha }}
           cache-to: |
             type=gha,scope=image-shared,mode=max
-            type=registry,ref=ghcr.io/grimmory-tools/grimmory:buildcache,mode=max
+            type=registry,ref=${{ env.ghcr_cache_ref }},mode=max
+
+      - name: Write Usage Summary
+        env:
+          IMAGE_TAGS: ${{ steps.metadata.outputs.image_tags }}
+          PLATFORMS: ${{ steps.metadata.outputs.platforms }}
+        run: |
+          {
+            echo "## Preview Image Ready"
+            echo
+            echo "- Ref: \`${{ inputs.ref }}\`"
+            echo "- Commit: \`${{ env.commit_sha }}\`"
+            echo "- Pinned image: \`${{ env.image_ref }}\`"
+            echo "- Platforms: \`${PLATFORMS}\`"
+            echo
+            echo "### Published Tags"
+            echo '```text'
+            echo "$IMAGE_TAGS"
+            echo '```'
+            echo
+            echo "Preview defaults to \`linux/amd64\`; enable \`build_arm64\` for a multi-arch image."
+            echo
+            echo "### Docker Compose"
+            echo '```yaml'
+            echo "services:"
+            echo "  grimmory:"
+            echo "    image: ${{ env.image_ref }}"
+            echo "    container_name: grimmory"
+            echo "    environment:"
+            echo "      - USER_ID=1000"
+            echo "      - GROUP_ID=1000"
+            echo "      - TZ=Etc/UTC"
+            echo "      - DATABASE_URL=jdbc:mariadb://mariadb:3306/grimmory"
+            echo "      - DATABASE_USERNAME=grimmory"
+            echo "      - DATABASE_PASSWORD=your_secure_password"
+            echo "      - API_DOCS_ENABLED=false"
+            echo "      - DISK_TYPE=LOCAL"
+            echo "    depends_on:"
+            echo "      mariadb:"
+            echo "        condition: service_healthy"
+            echo '    ports: ["6060:6060"]'
+            echo "    volumes:"
+            echo "      - ./data:/app/data"
+            echo "      - ./books:/books"
+            echo "      - ./bookdrop:/bookdrop"
+            echo "    restart: unless-stopped"
+            echo
+            echo "  mariadb:"
+            echo "    image: lscr.io/linuxserver/mariadb:11.4.8"
+            echo "    container_name: mariadb"
+            echo "    environment:"
+            echo "      - PUID=1000"
+            echo "      - PGID=1000"
+            echo "      - TZ=Etc/UTC"
+            echo "      - MYSQL_ROOT_PASSWORD=super_secure_password"
+            echo "      - MYSQL_DATABASE=grimmory"
+            echo "      - MYSQL_USER=grimmory"
+            echo "      - MYSQL_PASSWORD=your_secure_password"
+            echo "    volumes:"
+            echo "      - ./config:/config"
+            echo "    restart: unless-stopped"
+            echo "    healthcheck:"
+            echo '      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost"]'
+            echo "      interval: 5s"
+            echo "      timeout: 5s"
+            echo "      retries: 10"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
