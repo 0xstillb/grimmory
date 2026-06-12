@@ -2,6 +2,7 @@ package org.booklore.opf;
 
 import org.apache.commons.lang3.StringUtils;
 import org.booklore.model.dto.BookMetadata;
+import org.booklore.util.SecureXmlUtils;
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Element;
 
@@ -21,7 +22,7 @@ public class OpfMetadataExtractor {
     public Optional<BookMetadata> extract(Path opfPath) {
         try {
             String xml = Files.readString(opfPath, StandardCharsets.UTF_8);
-            var document = OpfXmlParser.parse(xml);
+            var document = SecureXmlUtils.parseXml(xml, true);
             Element root = document.getDocumentElement();
             if (root == null) {
                 return Optional.empty();

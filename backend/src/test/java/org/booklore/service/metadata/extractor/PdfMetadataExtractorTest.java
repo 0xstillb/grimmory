@@ -93,6 +93,30 @@ class PdfMetadataExtractorTest {
         assertThat(meta.getPageCount()).isEqualTo(1);
     }
 
+    @Test
+    void extractsMetadataWhenRawXmpUsesRdfRootWithoutRdfNamespace() throws Exception {
+        File pdf = createPdfWithRawXmp("""
+                <?xml version="1.0" encoding="UTF-8"?>
+                <x:xmpmeta xmlns:x="adobe:ns:meta/">
+                  <rdf:RDF>
+                    <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+                      <dc:title>Recovered PDF Title</dc:title>
+                      <dc:creator>
+                        <rdf:Seq>
+                          <rdf:li>Author PDF</rdf:li>
+                        </rdf:Seq>
+                      </dc:creator>
+                    </rdf:Description>
+                  </rdf:RDF>
+                </x:xmpmeta>
+                """);
+
+        BookMetadata meta = extractor.extractMetadata(pdf);
+
+        assertThat(meta.getTitle()).isEqualTo("Recovered PDF Title");
+        assertThat(meta.getAuthors()).containsExactly("Author PDF");
+    }
+
     // --- Document info (non-XMP) ---
 
     @Nested

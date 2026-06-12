@@ -15,7 +15,6 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -364,8 +363,8 @@ private static String cleanIsbn(String value) {
         }
 
         try {
-            Document document = SecureXmlUtils.createSecureDocumentBuilder(true)
-                    .parse(new ByteArrayInputStream(rawXmp));
+            String xml = new String(rawXmp, StandardCharsets.UTF_8);
+            Document document = SecureXmlUtils.parseXml(xml, true);
             return Optional.of(new RawXmpMetadata(document));
         } catch (Exception e) {
             log.debug("Failed to parse raw XMP metadata for PDF fallback extraction: {}", e.getMessage());

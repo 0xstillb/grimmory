@@ -25,7 +25,6 @@ import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
 import javax.xml.parsers.ParserConfigurationException;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -636,7 +635,16 @@ public class EpubMetadataExtractor implements FileMetadataExtractor {
         ByteArrayOutputStream baos = new ByteArrayOutputStream(4096);
         container.streamTo(path, baos);
 
-        return SecureXmlUtils.createSecureDocumentBuilder(true).parse(new ByteArrayInputStream(baos.toByteArray()));
+        String xml = baos.toString(StandardCharsets.UTF_8);
+        try {
+            return SecureXmlUtils.parseXml(xml, true);
+        } catch (ParserConfigurationException | SAXException e) {
+            throw e;
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new SAXException("Failed to parse XML from EPUB container: " + path, e);
+        }
     }
 
     private String resolvePath(String opfPath, String href) {
