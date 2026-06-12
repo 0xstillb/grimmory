@@ -6,10 +6,15 @@ import org.booklore.util.SecureXmlUtils;
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
+import org.xml.sax.helpers.DefaultHandler;
 
-import java.io.InputStream;
+import java.io.StringReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -20,9 +25,12 @@ import java.util.Set;
 @Component
 public class OpfMetadataExtractor {
 
+    private static final String RDF_NAMESPACE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+
     public Optional<BookMetadata> extract(Path opfPath) {
-        try (InputStream input = Files.newInputStream(opfPath)) {
-            Document document = SecureXmlUtils.createSecureDocumentBuilder(true).parse(input);
+        try {
+            String xml = Files.readString(opfPath, StandardCharsets.UTF_8);
+            Document document = parse(xml);
             Element root = document.getDocumentElement();
             if (root == null) {
                 return Optional.empty();
@@ -53,6 +61,34 @@ public class OpfMetadataExtractor {
         } catch (Exception e) {
             return Optional.empty();
         }
+    }
+
+    private Document parse(String xml) throws Exception {
+        try {
+            return parseStrict(xml);
+        } catch (SAXParseException e) {
+            if (!isMissingRdfNamespace(e, xml)) {
+                throw e;
+            }
+            return parseStrict(bindMissingRdfNamespace(xml));
+        }
+    }
+
+    private Document parseStrict(String xml) throws Exception {
+        var builder = SecureXmlUtils.createSecureDocumentBuilder(true);
+        builder.setErrorHandler(new SilentErrorHandler());
+        return builder.parse(new InputSource(new StringReader(xml)));
+    }
+
+    private boolean isMissingRdfNamespace(SAXParseException error, String xml) {
+        return error.getMessage() != null
+                && error.getMessage().contains("The prefix \"rdf\" for element \"rdf:RDF\" is not bound")
+                && xml.contains("<rdf:RDF")
+                && !xml.contains("xmlns:rdf=");
+    }
+
+    private String bindMissingRdfNamespace(String xml) {
+        return xml.replaceFirst("<rdf:RDF(\\s|>)", "<rdf:RDF xmlns:rdf=\"" + RDF_NAMESPACE + "\"$1");
     }
 
     private Optional<String> text(Element root, String localName) {
@@ -164,5 +200,21 @@ public class OpfMetadataExtractor {
                 || StringUtils.isNotBlank(metadata.getIsbn13())
                 || StringUtils.isNotBlank(metadata.getSeriesName())
                 || metadata.getSeriesNumber() != null;
+    }
+
+    private static final class SilentErrorHandler extends DefaultHandler {
+        @Override
+        public void warning(SAXParseException e) {
+        }
+
+        @Override
+        public void error(SAXParseException e) throws SAXException {
+            throw e;
+        }
+
+        @Override
+        public void fatalError(SAXParseException e) throws SAXException {
+            throw e;
+        }
     }
 }

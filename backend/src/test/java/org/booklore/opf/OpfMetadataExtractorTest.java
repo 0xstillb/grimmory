@@ -61,4 +61,33 @@ class OpfMetadataExtractorTest {
 
         assertThat(extractor.extract(opf)).isEmpty();
     }
+
+    @Test
+    void extractsMetadataFromRdfOpfWhenRdfNamespaceIsMissing() throws Exception {
+        Path opf = tempDir.resolve("metadata.opf");
+        Files.writeString(opf, """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/">
+                  <rdf:Description>
+                    <dc:title>Recovered RDF Title</dc:title>
+                    <dc:creator>Author RDF</dc:creator>
+                    <dc:publisher>Publisher RDF</dc:publisher>
+                    <dc:date>2026-06-12</dc:date>
+                    <dc:description>Description RDF</dc:description>
+                    <dc:language>ja</dc:language>
+                    <dc:subject>Drama</dc:subject>
+                  </rdf:Description>
+                </rdf:RDF>
+                """);
+
+        var metadata = extractor.extract(opf).orElseThrow();
+
+        assertThat(metadata.getTitle()).isEqualTo("Recovered RDF Title");
+        assertThat(metadata.getAuthors()).containsExactly("Author RDF");
+        assertThat(metadata.getPublisher()).isEqualTo("Publisher RDF");
+        assertThat(metadata.getPublishedDate()).isEqualTo(LocalDate.of(2026, 6, 12));
+        assertThat(metadata.getDescription()).isEqualTo("Description RDF");
+        assertThat(metadata.getLanguage()).isEqualTo("ja");
+        assertThat(metadata.getCategories()).isEqualTo(Set.of("Drama"));
+    }
 }
