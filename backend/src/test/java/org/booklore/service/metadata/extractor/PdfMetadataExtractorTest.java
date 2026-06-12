@@ -9,7 +9,10 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -111,10 +114,21 @@ class PdfMetadataExtractorTest {
                 </x:xmpmeta>
                 """);
 
-        BookMetadata meta = extractor.extractMetadata(pdf);
+        ByteArrayOutputStream parserErrors = new ByteArrayOutputStream();
+        BookMetadata meta;
+        synchronized (PdfMetadataExtractorTest.class) {
+            PrintStream originalError = System.err;
+            try (PrintStream capturedError = new PrintStream(parserErrors, true, StandardCharsets.UTF_8)) {
+                System.setErr(capturedError);
+                meta = extractor.extractMetadata(pdf);
+            } finally {
+                System.setErr(originalError);
+            }
+        }
 
         assertThat(meta.getTitle()).isEqualTo("Recovered PDF Title");
         assertThat(meta.getAuthors()).containsExactly("Author PDF");
+        assertThat(parserErrors.toString(StandardCharsets.UTF_8)).doesNotContain("[Fatal Error]");
     }
 
     // --- Document info (non-XMP) ---

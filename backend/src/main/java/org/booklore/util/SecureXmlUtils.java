@@ -13,6 +13,8 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.StringReader;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @UtilityClass
@@ -22,6 +24,8 @@ public class SecureXmlUtils {
     private static final DocumentBuilderFactory NS_AWARE_FACTORY;
     private static final DocumentBuilderFactory NON_NS_AWARE_FACTORY;
     private static final String RDF_NAMESPACE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+    private static final Pattern RDF_ROOT_PATTERN = Pattern.compile("<rdf:RDF\\b([^>]*)>");
+    private static final Pattern RDF_NAMESPACE_PATTERN = Pattern.compile("\\bxmlns:rdf\\s*=");
 
     static {
         try {
@@ -64,8 +68,20 @@ public class SecureXmlUtils {
             if (!namespaceAware || !isMissingRdfNamespace(e, xml)) {
                 throw e;
             }
-            return parseStrict(bindMissingRdfNamespace(xml), true);
+            return parseStrict(normalizeMissingRdfNamespace(xml), true);
         }
+    }
+
+    public static String normalizeMissingRdfNamespace(String xml) {
+        if (xml == null) {
+            return xml;
+        }
+        Matcher rootMatcher = RDF_ROOT_PATTERN.matcher(xml);
+        if (!rootMatcher.find() || RDF_NAMESPACE_PATTERN.matcher(rootMatcher.group(1)).find()) {
+            return xml;
+        }
+        String normalizedRoot = "<rdf:RDF xmlns:rdf=\"" + RDF_NAMESPACE + "\"" + rootMatcher.group(1) + ">";
+        return rootMatcher.replaceFirst(Matcher.quoteReplacement(normalizedRoot));
     }
 
     private static Document parseStrict(String xml, boolean namespaceAware) throws Exception {
@@ -77,12 +93,7 @@ public class SecureXmlUtils {
     private static boolean isMissingRdfNamespace(SAXParseException error, String xml) {
         return error.getMessage() != null
                 && error.getMessage().contains("The prefix \"rdf\" for element \"rdf:RDF\" is not bound")
-                && xml.contains("<rdf:RDF")
-                && !xml.contains("xmlns:rdf=");
-    }
-
-    private static String bindMissingRdfNamespace(String xml) {
-        return xml.replaceFirst("<rdf:RDF(\\s|>)", "<rdf:RDF xmlns:rdf=\"" + RDF_NAMESPACE + "\"$1");
+                && !normalizeMissingRdfNamespace(xml).equals(xml);
     }
 
     private static final class SilentErrorHandler extends DefaultHandler {
