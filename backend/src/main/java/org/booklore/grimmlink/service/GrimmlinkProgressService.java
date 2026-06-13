@@ -8,6 +8,8 @@ import org.booklore.model.entity.BookFileEntity;
 import org.booklore.model.entity.BookLoreUserEntity;
 import org.booklore.model.entity.UserBookFileProgressEntity;
 import org.booklore.model.entity.UserBookProgressEntity;
+import org.booklore.model.enums.BookFileType;
+import org.booklore.model.enums.ReadStatus;
 import org.booklore.repository.BookFileRepository;
 import org.booklore.repository.UserBookFileProgressRepository;
 import org.booklore.repository.UserBookProgressRepository;
@@ -35,6 +37,9 @@ public class GrimmlinkProgressService {
                 .findByUserIdAndBookId(reader.getId(), book.getId())
                 .orElse(null);
         BookFileEntity primaryFile = bookService.resolvePrimaryFile(book);
+        boolean reflowable = isReflowable(primaryFile);
+        String storedProgress = progress != null ? progress.getKoreaderProgress() : null;
+        String nativeLocation = reflowable ? usableNativeLocation(storedProgress) : null;
         Instant effectiveTime = progress != null
                 ? progress.getKoreaderLastSyncTime() != null
                         ? progress.getKoreaderLastSyncTime()
@@ -52,7 +57,8 @@ public class GrimmlinkProgressService {
                 .percentage(progress != null
                         ? fromStoredKoreaderFraction(progress.getKoreaderProgressPercent())
                         : null)
-                .progress(progress != null ? progress.getKoreaderProgress() : null)
+                .progress(reflowable ? nativeLocation : storedProgress)
+                .location(reflowable ? nativeLocation : null)
                 .updatedAt(effectiveTime)
                 .device(progress != null ? progress.getKoreaderDevice() : null)
                 .device_id(progress != null ? progress.getKoreaderDeviceId() : null)
@@ -71,55 +77,60 @@ public class GrimmlinkProgressService {
         }
         BookLoreUserEntity reader = authService.requireCurrentReader(true);
         BookEntity book = hashMatcher.resolveAccessibleBookByHash(reader, bookHash);
+        BookFileEntity requestedFile = resolveRequestedFile(book, request);
+        boolean reflowable = isReflowable(requestedFile);
+        String nativeLocation = reflowable ? resolveNativeLocation(request) : null;
+        if (reflowable && nativeLocation == null) {
+            throw ApiError.GENERIC_BAD_REQUEST.createException(
+                    "KOReader-native location is required for reflowable progress");
+        }
         UserBookProgressEntity progress = userBookProgressRepository
                 .findByUserIdAndBookId(reader.getId(), book.getId())
                 .orElseGet(UserBookProgressEntity::new);
 
-        boolean isNew = progress.getId() == null;
-        org.booklore.model.enums.ReadStatus previousManualStatus =
-                !isNew && progress.getReadStatusModifiedTime() != null
-                ? progress.getReadStatus()
-                : null;
         Instant clientTime = resolveClientTime(request);
-        boolean preserveManualStatus = previousManualStatus != null
-                && progress.getReadStatusModifiedTime().isAfter(clientTime);
-        Float normalizedPercent = resolvePercent(request);
+        Float displayPercent = reflowable
+                ? resolveReflowableDisplayPercent(request)
+                : resolvePercent(request);
 
         progress.setUser(reader);
         progress.setBook(book);
-        progress.setKoreaderProgress(bookService.firstNonBlank(
-                request.getRawKoreaderProgress(), request.getProgress()));
-        progress.setKoreaderProgressPercent(toStoredKoreaderFraction(normalizedPercent));
+        progress.setKoreaderProgress(reflowable
+                ? nativeLocation
+                : bookService.firstNonBlank(request.getRawKoreaderProgress(), request.getProgress()));
+        progress.setKoreaderProgressPercent(toStoredKoreaderFraction(displayPercent));
         progress.setKoreaderDevice(request.getDevice());
         progress.setKoreaderDeviceId(request.getDevice_id());
         progress.setKoreaderLastSyncTime(Instant.now());
         progress.setLastReadTime(clientTime);
 
-        if (normalizedPercent != null) {
-            if (preserveManualStatus) {
-                progress.setReadStatus(previousManualStatus);
-            } else {
-                org.booklore.model.enums.ReadStatus derived = deriveReadStatus(normalizedPercent);
-                progress.setReadStatus(derived);
-                if (derived == org.booklore.model.enums.ReadStatus.READ
-                        && (isNew || progress.getDateFinished() == null)) {
-                    progress.setDateFinished(Instant.now());
-                }
-            }
+        if (reflowable) {
+            updateReflowableReadStatus(progress);
+        } else {
+            updateFixedPageReadStatus(progress, displayPercent, clientTime);
         }
         userBookProgressRepository.save(progress);
 
-        if (request.getCurrentPage() != null
+        if (reflowable
+                || request.getCurrentPage() != null
                 || request.getTotalPages() != null
                 || request.getLocation() != null) {
-            persistFileProgressIfPossible(bookHash, request);
+            persistFileProgressIfPossible(
+                    reader,
+                    requestedFile,
+                    request,
+                    reflowable ? nativeLocation : null,
+                    displayPercent,
+                    clientTime);
         }
     }
 
-    private void persistFileProgressIfPossible(String bookHash, KoreaderProgress request) {
-        BookLoreUserEntity reader = authService.requireCurrentReader(true);
-        BookEntity book = hashMatcher.resolveAccessibleBookByHash(reader, bookHash);
-        BookFileEntity file = resolveRequestedFile(book, request);
+    private void persistFileProgressIfPossible(BookLoreUserEntity reader,
+                                               BookFileEntity file,
+                                               KoreaderProgress request,
+                                               String nativeLocation,
+                                               Float displayPercent,
+                                               Instant clientTime) {
         if (file == null) {
             return;
         }
@@ -128,10 +139,12 @@ public class GrimmlinkProgressService {
                 .orElseGet(UserBookFileProgressEntity::new);
         fileProgress.setUser(reader);
         fileProgress.setBookFile(file);
-        fileProgress.setPositionData(bookService.firstNonBlank(request.getProgress(), request.getLocation()));
-        fileProgress.setPositionHref(request.getLocation());
-        fileProgress.setProgressPercent(resolvePercent(request));
-        fileProgress.setLastReadTime(resolveClientTime(request));
+        fileProgress.setPositionData(nativeLocation != null
+                ? nativeLocation
+                : bookService.firstNonBlank(request.getProgress(), request.getLocation()));
+        fileProgress.setPositionHref(nativeLocation != null ? nativeLocation : request.getLocation());
+        fileProgress.setProgressPercent(displayPercent);
+        fileProgress.setLastReadTime(clientTime);
         userBookFileProgressRepository.save(fileProgress);
     }
 
@@ -142,6 +155,48 @@ public class GrimmlinkProgressService {
                     .orElse(null);
         }
         return bookService.resolvePrimaryFile(book);
+    }
+
+    private static boolean isReflowable(BookFileEntity file) {
+        if (file == null || file.getBookType() == null) {
+            return false;
+        }
+        return switch (file.getBookType()) {
+            case EPUB, MOBI, AZW3, FB2 -> true;
+            default -> false;
+        };
+    }
+
+    private String resolveNativeLocation(KoreaderProgress request) {
+        String location = usableNativeLocation(request.getLocation());
+        if (location != null) {
+            return location;
+        }
+        return usableNativeLocation(request.getProgress());
+    }
+
+    private static String usableNativeLocation(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return isNumericOnly(trimmed) ? null : trimmed;
+    }
+
+    private static boolean isNumericOnly(String value) {
+        try {
+            Double.parseDouble(value);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    static Float resolveReflowableDisplayPercent(KoreaderProgress request) {
+        Float percentage = clampPercent(request.getPercentage());
+        return percentage != null
+                ? percentage
+                : calculatePageRatio(request.getCurrentPage(), request.getTotalPages());
     }
 
     static Float resolvePercent(KoreaderProgress request) {
@@ -200,14 +255,50 @@ public class GrimmlinkProgressService {
         return clampPercent(currentPage * 100.0f / totalPages);
     }
 
-    private org.booklore.model.enums.ReadStatus deriveReadStatus(Float normalizedPercent) {
+    private void updateReflowableReadStatus(UserBookProgressEntity progress) {
+        if (progress.getReadStatusModifiedTime() != null) {
+            return;
+        }
+        ReadStatus currentStatus = progress.getReadStatus();
+        if (currentStatus == null
+                || currentStatus == ReadStatus.UNSET
+                || currentStatus == ReadStatus.UNREAD) {
+            progress.setReadStatus(ReadStatus.READING);
+        }
+    }
+
+    private void updateFixedPageReadStatus(UserBookProgressEntity progress,
+                                           Float normalizedPercent,
+                                           Instant clientTime) {
+        if (normalizedPercent == null) {
+            return;
+        }
+        ReadStatus previousManualStatus = progress.getId() != null
+                && progress.getReadStatusModifiedTime() != null
+                ? progress.getReadStatus()
+                : null;
+        boolean preserveManualStatus = previousManualStatus != null
+                && progress.getReadStatusModifiedTime().isAfter(clientTime);
+        if (preserveManualStatus) {
+            progress.setReadStatus(previousManualStatus);
+            return;
+        }
+
+        ReadStatus derived = deriveFixedPageReadStatus(normalizedPercent);
+        progress.setReadStatus(derived);
+        if (derived == ReadStatus.READ && progress.getDateFinished() == null) {
+            progress.setDateFinished(Instant.now());
+        }
+    }
+
+    private ReadStatus deriveFixedPageReadStatus(Float normalizedPercent) {
         if (normalizedPercent >= 99.0f) {
-            return org.booklore.model.enums.ReadStatus.READ;
+            return ReadStatus.READ;
         }
         if (normalizedPercent >= 1.0f) {
-            return org.booklore.model.enums.ReadStatus.READING;
+            return ReadStatus.READING;
         }
-        return org.booklore.model.enums.ReadStatus.UNREAD;
+        return ReadStatus.UNREAD;
     }
 
     static Instant resolveClientTime(KoreaderProgress request) {

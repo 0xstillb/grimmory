@@ -567,7 +567,7 @@ class GrimmlinkServicesBehaviorTest {
 
         progressService.updateProgress(progress);
 
-        verify(hashMatcher, times(2)).resolveAccessibleBookByHash(any(), eq("hash-xyz"));
+        verify(hashMatcher).resolveAccessibleBookByHash(any(), eq("hash-xyz"));
     }
 
     // ──────────────────────────────────────────
@@ -603,6 +603,187 @@ class GrimmlinkServicesBehaviorTest {
         assertEquals(Float.valueOf(0.50f), saved.getKoreaderProgressPercent());
         assertEquals("android", saved.getKoreaderDevice());
         assertEquals("dev-42", saved.getKoreaderDeviceId());
+    }
+
+    @Test
+    void updateProgress_reflowablePrefersLocationOverProgress() {
+        library.setFormatPriority(List.of(BookFileType.EPUB));
+        bookFile.setBookType(BookFileType.EPUB);
+        when(hashMatcher.resolveAccessibleBookByHash(any(), eq("hash-123")))
+                .thenReturn(book);
+        when(userBookProgressRepository.findByUserIdAndBookId(7L, 99L))
+                .thenReturn(Optional.empty());
+        when(userBookProgressRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(userBookFileProgressRepository.findByUserIdAndBookFileId(7L, 5L))
+                .thenReturn(Optional.empty());
+
+        KoreaderProgress request = KoreaderProgress.builder()
+                .document("hash-123")
+                .location("/body/DocFragment[3]/body/p[35]/text().0")
+                .progress("/body/DocFragment[1]/body/p[1]/text().0")
+                .percentage(20.4f)
+                .build();
+
+        progressService.updateProgress(request);
+
+        ArgumentCaptor<UserBookProgressEntity> progressCaptor =
+                ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(userBookProgressRepository).save(progressCaptor.capture());
+        assertEquals(request.getLocation(), progressCaptor.getValue().getKoreaderProgress());
+        assertEquals(Float.valueOf(0.204f), progressCaptor.getValue().getKoreaderProgressPercent());
+        assertEquals(ReadStatus.READING, progressCaptor.getValue().getReadStatus());
+
+        ArgumentCaptor<UserBookFileProgressEntity> fileCaptor =
+                ArgumentCaptor.forClass(UserBookFileProgressEntity.class);
+        verify(userBookFileProgressRepository).save(fileCaptor.capture());
+        assertEquals(request.getLocation(), fileCaptor.getValue().getPositionData());
+        assertEquals(request.getLocation(), fileCaptor.getValue().getPositionHref());
+        assertEquals(Float.valueOf(20.4f), fileCaptor.getValue().getProgressPercent());
+    }
+
+    @Test
+    void updateProgress_reflowableFallsBackToNativeProgress() {
+        library.setFormatPriority(List.of(BookFileType.EPUB));
+        bookFile.setBookType(BookFileType.EPUB);
+        when(hashMatcher.resolveAccessibleBookByHash(any(), eq("hash-123")))
+                .thenReturn(book);
+        when(userBookProgressRepository.findByUserIdAndBookId(7L, 99L))
+                .thenReturn(Optional.empty());
+
+        KoreaderProgress request = KoreaderProgress.builder()
+                .document("hash-123")
+                .location("10")
+                .progress("/body/DocFragment[4]/body/p[2]/text().0")
+                .build();
+
+        progressService.updateProgress(request);
+
+        ArgumentCaptor<UserBookProgressEntity> captor =
+                ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(userBookProgressRepository).save(captor.capture());
+        assertEquals(request.getProgress(), captor.getValue().getKoreaderProgress());
+    }
+
+    @Test
+    void updateProgress_reflowableRejectsMissingOrNumericOnlyNativeLocation() {
+        library.setFormatPriority(List.of(BookFileType.EPUB));
+        bookFile.setBookType(BookFileType.EPUB);
+        when(hashMatcher.resolveAccessibleBookByHash(any(), eq("hash-123")))
+                .thenReturn(book);
+
+        APIException missing = assertThrows(APIException.class, () ->
+                progressService.updateProgress(KoreaderProgress.builder()
+                        .document("hash-123")
+                        .percentage(50.0f)
+                        .currentPage(50)
+                        .totalPages(100)
+                        .build()));
+        assertTrue(missing.getMessage().contains("KOReader-native location is required"));
+
+        assertThrows(APIException.class, () ->
+                progressService.updateProgress(KoreaderProgress.builder()
+                        .document("hash-123")
+                        .location("10")
+                        .progress("0.10")
+                        .build()));
+        assertThrows(APIException.class, () ->
+                progressService.updateProgress(KoreaderProgress.builder()
+                        .document("hash-123")
+                        .location("NaN")
+                        .progress("Infinity")
+                        .build()));
+
+        verify(userBookProgressRepository, never()).save(any());
+        verify(userBookFileProgressRepository, never()).save(any());
+    }
+
+    @Test
+    void updateProgress_reflowableUsesPageRatioOnlyWhenPercentageIsMissing() {
+        library.setFormatPriority(List.of(BookFileType.EPUB));
+        bookFile.setBookType(BookFileType.EPUB);
+        when(hashMatcher.resolveAccessibleBookByHash(any(), eq("hash-123")))
+                .thenReturn(book);
+        when(userBookProgressRepository.findByUserIdAndBookId(7L, 99L))
+                .thenReturn(Optional.empty());
+
+        progressService.updateProgress(KoreaderProgress.builder()
+                .document("hash-123")
+                .progress("/body/DocFragment[3]/body/p[35]/text().0")
+                .currentPage(10)
+                .totalPages(10000)
+                .build());
+
+        ArgumentCaptor<UserBookProgressEntity> captor =
+                ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(userBookProgressRepository).save(captor.capture());
+        assertEquals(Float.valueOf(0.001f), captor.getValue().getKoreaderProgressPercent());
+        assertEquals(ReadStatus.READING, captor.getValue().getReadStatus());
+    }
+
+    @Test
+    void updateProgress_reflowablePercentageNeverMarksBookRead() {
+        library.setFormatPriority(List.of(BookFileType.EPUB));
+        bookFile.setBookType(BookFileType.EPUB);
+        when(hashMatcher.resolveAccessibleBookByHash(any(), eq("hash-123")))
+                .thenReturn(book);
+        when(userBookProgressRepository.findByUserIdAndBookId(7L, 99L))
+                .thenReturn(Optional.empty());
+
+        progressService.updateProgress(KoreaderProgress.builder()
+                .document("hash-123")
+                .progress("/body/DocFragment[8]/body/p[9]/text().0")
+                .percentage(100.0f)
+                .build());
+
+        ArgumentCaptor<UserBookProgressEntity> captor =
+                ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(userBookProgressRepository).save(captor.capture());
+        assertEquals(ReadStatus.READING, captor.getValue().getReadStatus());
+        assertNull(captor.getValue().getDateFinished());
+    }
+
+    @Test
+    void updateProgress_reflowableDoesNotReplaceExistingStatus() {
+        library.setFormatPriority(List.of(BookFileType.EPUB));
+        bookFile.setBookType(BookFileType.EPUB);
+        UserBookProgressEntity existing = new UserBookProgressEntity();
+        existing.setId(10L);
+        existing.setReadStatus(ReadStatus.PAUSED);
+        when(hashMatcher.resolveAccessibleBookByHash(any(), eq("hash-123")))
+                .thenReturn(book);
+        when(userBookProgressRepository.findByUserIdAndBookId(7L, 99L))
+                .thenReturn(Optional.of(existing));
+
+        progressService.updateProgress(KoreaderProgress.builder()
+                .document("hash-123")
+                .progress("/body/DocFragment[2]/body/p[3]/text().0")
+                .percentage(100.0f)
+                .build());
+
+        assertEquals(ReadStatus.PAUSED, existing.getReadStatus());
+        assertNull(existing.getDateFinished());
+    }
+
+    @Test
+    void updateProgress_reflowablePreservesManualUnreadStatus() {
+        library.setFormatPriority(List.of(BookFileType.EPUB));
+        bookFile.setBookType(BookFileType.EPUB);
+        UserBookProgressEntity existing = new UserBookProgressEntity();
+        existing.setId(10L);
+        existing.setReadStatus(ReadStatus.UNREAD);
+        existing.setReadStatusModifiedTime(Instant.parse("2026-06-10T12:00:00Z"));
+        when(hashMatcher.resolveAccessibleBookByHash(any(), eq("hash-123")))
+                .thenReturn(book);
+        when(userBookProgressRepository.findByUserIdAndBookId(7L, 99L))
+                .thenReturn(Optional.of(existing));
+
+        progressService.updateProgress(KoreaderProgress.builder()
+                .document("hash-123")
+                .progress("/body/DocFragment[2]/body/p[3]/text().0")
+                .updatedAt(Instant.parse("2026-06-10T13:00:00Z"))
+                .build());
+
+        assertEquals(ReadStatus.UNREAD, existing.getReadStatus());
     }
 
     @Test
@@ -770,6 +951,27 @@ class GrimmlinkServicesBehaviorTest {
     }
 
     @Test
+    void resolveReflowableDisplayPercent_doesNotParseNativeProgressAsRatio() {
+        assertNull(GrimmlinkProgressService.resolveReflowableDisplayPercent(
+                KoreaderProgress.builder().progress("0.10").build()));
+        assertEquals(
+                Float.valueOf(20.4f),
+                GrimmlinkProgressService.resolveReflowableDisplayPercent(
+                        KoreaderProgress.builder()
+                                .percentage(20.4f)
+                                .currentPage(10)
+                                .totalPages(10000)
+                                .build()));
+        assertEquals(
+                Float.valueOf(0.1f),
+                GrimmlinkProgressService.resolveReflowableDisplayPercent(
+                        KoreaderProgress.builder()
+                                .currentPage(10)
+                                .totalPages(10000)
+                                .build()));
+    }
+
+    @Test
     void resolvePercent_clampsFinalValue() {
         assertEquals(
                 Float.valueOf(0.0f),
@@ -902,6 +1104,42 @@ class GrimmlinkServicesBehaviorTest {
 
         assertEquals(Long.valueOf(1781172000L), result.getTimestamp());
         assertEquals(Instant.parse("2026-06-11T10:00:00Z"), result.getUpdatedAt());
+    }
+
+    @Test
+    void getProgress_reflowableReturnsOnlyUsableNativeLocation() {
+        library.setFormatPriority(List.of(BookFileType.EPUB));
+        bookFile.setBookType(BookFileType.EPUB);
+        when(hashMatcher.resolveAccessibleBookByHash(any(), eq("hash-abc")))
+                .thenReturn(book);
+        UserBookProgressEntity existing = new UserBookProgressEntity();
+        existing.setKoreaderProgress("10");
+        existing.setKoreaderProgressPercent(0.25f);
+        when(userBookProgressRepository.findByUserIdAndBookId(7L, 99L))
+                .thenReturn(Optional.of(existing));
+
+        KoreaderProgress result = progressService.getProgress("hash-abc");
+
+        assertNull(result.getProgress());
+        assertNull(result.getLocation());
+        assertEquals(Float.valueOf(25.0f), result.getPercentage());
+    }
+
+    @Test
+    void getProgress_reflowableReturnsNativeLocationInBothFields() {
+        library.setFormatPriority(List.of(BookFileType.EPUB));
+        bookFile.setBookType(BookFileType.EPUB);
+        when(hashMatcher.resolveAccessibleBookByHash(any(), eq("hash-abc")))
+                .thenReturn(book);
+        UserBookProgressEntity existing = new UserBookProgressEntity();
+        existing.setKoreaderProgress("/body/DocFragment[3]/body/p[35]/text().0");
+        when(userBookProgressRepository.findByUserIdAndBookId(7L, 99L))
+                .thenReturn(Optional.of(existing));
+
+        KoreaderProgress result = progressService.getProgress("hash-abc");
+
+        assertEquals(existing.getKoreaderProgress(), result.getProgress());
+        assertEquals(existing.getKoreaderProgress(), result.getLocation());
     }
 
     @Test
