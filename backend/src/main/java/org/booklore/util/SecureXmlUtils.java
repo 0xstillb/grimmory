@@ -38,6 +38,8 @@ public class SecureXmlUtils {
     private static final Pattern XMPIDQ_PREFIX_USAGE_PATTERN = Pattern.compile("(?:</?xmpidq:|\\sxmpidq:)");
     private static final Pattern CALIBRE_NAMESPACE_PATTERN = Pattern.compile("\\bxmlns:calibre\\s*=");
     private static final Pattern CALIBRE_PREFIX_USAGE_PATTERN = Pattern.compile("(?:</?calibre:|\\scalibre:)");
+    private static final Pattern CALIBRESI_NAMESPACE_PATTERN = Pattern.compile("\\bxmlns:calibreSI\\s*=");
+    private static final Pattern CALIBRESI_PREFIX_USAGE_PATTERN = Pattern.compile("(?:</?calibreSI:|\\scalibreSI:)");
 
     static {
         try {
@@ -107,6 +109,10 @@ public class SecureXmlUtils {
         if (CALIBRE_PREFIX_USAGE_PATTERN.matcher(xml).find()
                 && !CALIBRE_NAMESPACE_PATTERN.matcher(rootAttributes).find()) {
             missingNamespaces.append(" xmlns:calibre=\"").append(CALIBRE_NAMESPACE).append('"');
+        }
+        if (CALIBRESI_PREFIX_USAGE_PATTERN.matcher(xml).find()
+                && !CALIBRESI_NAMESPACE_PATTERN.matcher(rootAttributes).find()) {
+            missingNamespaces.append(" xmlns:calibreSI=\"").append(CALIBRE_NAMESPACE).append('"');
         }
         if (missingNamespaces.isEmpty()) {
             return xml;
