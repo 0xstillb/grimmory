@@ -9,14 +9,17 @@ import org.booklore.grimmlink.dto.GrimmlinkMetadataPullResponse;
 import org.booklore.grimmlink.dto.GrimmlinkMetadataSyncRequest;
 import org.booklore.grimmlink.dto.GrimmlinkMetadataSyncResponse;
 import org.booklore.grimmlink.dto.GrimmlinkMetadataSyncResults;
+import org.booklore.grimmlink.dto.GrimmlinkRatingPayload;
 import org.booklore.grimmlink.model.GrimmlinkMetadataItemEntity;
 import org.booklore.grimmlink.model.GrimmlinkMetadataItemType;
 import org.booklore.grimmlink.repository.GrimmlinkMetadataItemRepository;
 import org.booklore.model.entity.BookEntity;
 import org.booklore.model.entity.BookFileEntity;
 import org.booklore.model.entity.BookLoreUserEntity;
+import org.booklore.model.entity.UserBookProgressEntity;
 import org.booklore.repository.BookFileRepository;
 import org.booklore.repository.BookRepository;
+import org.booklore.repository.UserBookProgressRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +32,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -41,6 +45,7 @@ public class GrimmlinkMetadataService {
     private final GrimmlinkHashMatcher hashMatcher;
     private final BookRepository bookRepository;
     private final BookFileRepository bookFileRepository;
+    private final UserBookProgressRepository userBookProgressRepository;
     private final GrimmlinkMetadataItemRepository metadataItemRepository;
     private final ObjectMapper objectMapper;
 
@@ -55,16 +60,7 @@ public class GrimmlinkMetadataService {
         BookEntity book = bookOpt.get();
         BookFileEntity bookFile = resolveBookFile(book, normalized.getBookFileId());
         GrimmlinkItemResult rating = normalized.getRating() != null
-                ? upsertMetadataItem(
-                        reader,
-                        book,
-                        bookFile,
-                        GrimmlinkMetadataItemType.RATING,
-                        normalized.getRating().getDedupeKey(),
-                        normalized.getRating().getUpdatedAt(),
-                        normalized.getDevice(),
-                        normalized.getDeviceId(),
-                        normalized.getRating())
+                ? syncRating(reader, book, bookFile, normalized)
                 : null;
         List<GrimmlinkItemResult> annotations = normalized.getAnnotations().stream()
                 .map(item -> upsertMetadataItem(
@@ -116,7 +112,7 @@ public class GrimmlinkMetadataService {
         GrimmlinkMetadataItemType itemType = normalizeMetadataType(type);
         int normalizedLimit = normalizeLimit(limit);
         Instant effectiveSince = cursor != null ? cursor : since;
-        List<GrimmlinkMetadataPullItem> items = metadataItemRepository
+        List<GrimmlinkMetadataPullItem> storedItems = metadataItemRepository
                 .findPullItems(
                         reader.getId(),
                         book.getId(),
@@ -127,9 +123,32 @@ public class GrimmlinkMetadataService {
                 .stream()
                 .map(this::toPullItem)
                 .toList();
-        Instant nextCursor = items.isEmpty()
+        List<GrimmlinkMetadataPullItem> items = new ArrayList<>(normalizedLimit);
+        if (itemType == null || itemType == GrimmlinkMetadataItemType.RATING) {
+            userBookProgressRepository.findByUserIdAndBookId(reader.getId(), book.getId())
+                    .map(UserBookProgressEntity::getPersonalRating)
+                    .filter(rating -> rating >= 1 && rating <= 10)
+                    .map(rating -> GrimmlinkMetadataPullItem.builder()
+                            .id("grimmory-personal-rating")
+                            .type("rating")
+                            .bookId(book.getId())
+                            .bookFileId(bookFile != null ? bookFile.getId() : null)
+                            .dedupeKey("grimmory-personal-rating:" + rating)
+                            .payload(Map.of(
+                                    "value", rating,
+                                    "scale", 10,
+                                    "source", "grimmory-web"))
+                            .device("Grimmory Web")
+                            .build())
+                    .ifPresent(items::add);
+        }
+        int storedItemLimit = Math.max(0, normalizedLimit - items.size());
+        storedItems.stream()
+                .limit(storedItemLimit)
+                .forEach(items::add);
+        Instant nextCursor = storedItems.isEmpty() || storedItemLimit == 0
                 ? effectiveSince
-                : items.get(items.size() - 1).getUpdatedAt();
+                : storedItems.get(Math.min(storedItems.size(), storedItemLimit) - 1).getUpdatedAt();
         return GrimmlinkMetadataPullResponse.builder()
                 .bookId(book.getId())
                 .bookFileId(bookFile != null ? bookFile.getId() : null)
@@ -286,6 +305,54 @@ public class GrimmlinkMetadataService {
                         .bookmarks(bookmarks)
                         .build())
                 .build();
+    }
+
+    private GrimmlinkItemResult syncRating(
+            BookLoreUserEntity reader,
+            BookEntity book,
+            BookFileEntity bookFile,
+            GrimmlinkMetadataSyncRequest request) {
+        GrimmlinkRatingPayload payload = request.getRating();
+        Integer normalizedRating = normalizePersonalRating(payload);
+        if (normalizedRating == null) {
+            return failedResult("rating", payload.getDedupeKey(), "invalid_rating");
+        }
+        GrimmlinkItemResult result = upsertMetadataItem(
+                reader,
+                book,
+                bookFile,
+                GrimmlinkMetadataItemType.RATING,
+                payload.getDedupeKey(),
+                payload.getUpdatedAt(),
+                request.getDevice(),
+                request.getDeviceId(),
+                payload);
+        if (!"failed".equals(result.getStatus())) {
+            UserBookProgressEntity progress = userBookProgressRepository
+                    .findByUserIdAndBookId(reader.getId(), book.getId())
+                    .orElseGet(() -> UserBookProgressEntity.builder()
+                            .user(reader)
+                            .book(book)
+                            .build());
+            progress.setPersonalRating(normalizedRating);
+            userBookProgressRepository.save(progress);
+        }
+        return result;
+    }
+
+    private Integer normalizePersonalRating(GrimmlinkRatingPayload payload) {
+        if (payload == null || payload.getValue() == null) {
+            return null;
+        }
+        int scale = payload.getScale() == null ? 10 : payload.getScale();
+        int value = payload.getValue();
+        if (scale == 10 && value >= 1 && value <= 10) {
+            return value;
+        }
+        if (scale == 5 && value >= 1 && value <= 5) {
+            return value * 2;
+        }
+        return null;
     }
 
     private GrimmlinkItemResult upsertMetadataItem(

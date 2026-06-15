@@ -33,6 +33,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -103,6 +104,7 @@ class GrimmlinkServicesBehaviorTest {
                 hashMatcher,
                 bookRepository,
                 bookFileRepository,
+                userBookProgressRepository,
                 metadataItemRepository,
                 objectMapper);
         shelfService = new GrimmlinkShelfService(
@@ -490,6 +492,60 @@ class GrimmlinkServicesBehaviorTest {
         assertNotNull(response.getPush());
         assertTrue(response.getPush().isOk());
         assertNotNull(response.getPull());
+    }
+
+    @Test
+    void pullMetadata_includesCurrentGrimmoryPersonalRating() {
+        UserBookProgressEntity progress = new UserBookProgressEntity();
+        progress.setPersonalRating(8);
+        when(userBookProgressRepository.findByUserIdAndBookId(7L, 99L))
+                .thenReturn(Optional.of(progress));
+        when(metadataItemRepository.findPullItems(
+                anyLong(), anyLong(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        GrimmlinkMetadataPullResponse response = metadataService.pullMetadata(
+                99L, null, null, null, null, 100, null);
+
+        assertEquals(1, response.getItems().size());
+        GrimmlinkMetadataPullItem rating = response.getItems().getFirst();
+        assertEquals("rating", rating.getType());
+        assertEquals("grimmory-personal-rating:8", rating.getDedupeKey());
+        assertEquals("Grimmory Web", rating.getDevice());
+        assertNull(rating.getDeviceId());
+        assertEquals(Map.of(
+                "value", 8,
+                "scale", 10,
+                "source", "grimmory-web"), rating.getPayload());
+    }
+
+    @Test
+    void syncMetadata_updatesCurrentGrimmoryPersonalRating() {
+        GrimmlinkRatingPayload rating = new GrimmlinkRatingPayload();
+        rating.setDedupeKey("rating-8");
+        rating.setValue(4);
+        rating.setScale(5);
+        GrimmlinkMetadataSyncRequest request = new GrimmlinkMetadataSyncRequest();
+        request.setBookId(99L);
+        request.setRating(rating);
+
+        when(objectMapper.writeValueAsString(rating)).thenReturn("{}");
+        when(metadataItemRepository.findByUserIdAndBookIdAndItemTypeAndDedupeKey(
+                7L, 99L, GrimmlinkMetadataItemType.RATING, "rating-8"))
+                .thenReturn(Optional.empty());
+        when(metadataItemRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userBookProgressRepository.findByUserIdAndBookId(7L, 99L))
+                .thenReturn(Optional.empty());
+
+        GrimmlinkMetadataSyncResponse response = metadataService.syncMetadata(request);
+
+        assertTrue(response.isOk());
+        ArgumentCaptor<UserBookProgressEntity> captor =
+                ArgumentCaptor.forClass(UserBookProgressEntity.class);
+        verify(userBookProgressRepository).save(captor.capture());
+        assertEquals(8, captor.getValue().getPersonalRating());
+        assertSame(reader, captor.getValue().getUser());
+        assertSame(book, captor.getValue().getBook());
     }
 
     @Test
