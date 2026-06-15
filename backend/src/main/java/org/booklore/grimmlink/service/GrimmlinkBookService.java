@@ -12,10 +12,10 @@ import org.booklore.model.enums.ReadStatus;
 import org.booklore.repository.BookRepository;
 import org.booklore.repository.UserBookProgressRepository;
 import org.booklore.service.book.BookDownloadService;
-import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.time.Instant;
 import java.util.EnumSet;
@@ -51,7 +51,7 @@ public class GrimmlinkBookService {
     }
 
     @Transactional(readOnly = true)
-    public ResponseEntity<Resource> downloadBook(Long bookId) {
+    public ResponseEntity<StreamingResponseBody> downloadBook(Long bookId) {
         BookLoreUserEntity reader = authService.requireCurrentReader(true);
         loadAccessibleBookById(reader, bookId);
         return bookDownloadService.downloadBook(bookId);
