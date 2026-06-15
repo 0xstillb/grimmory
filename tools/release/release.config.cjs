@@ -2,7 +2,7 @@ const releasePolicy = require("./release-policy.cjs");
 
 module.exports = {
   branches: ["main"],
-  tagFormat: "v${version}",
+  tagFormat: "v${version}-grimmory",
   plugins: [
     [
       "@semantic-release/commit-analyzer",
