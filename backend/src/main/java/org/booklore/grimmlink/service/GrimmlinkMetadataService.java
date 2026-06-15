@@ -331,17 +331,7 @@ public class GrimmlinkMetadataService {
         String dedupeKey = bookService.trimToNull(payload.getDedupeKey());
         // Handle rating removal (value=0 or value=null signals deletion)
         if (payload.getValue() == null || payload.getValue() == 0) {
-            if (dedupeKey != null) {
-                metadataItemRepository.findByUserIdAndBookIdAndItemTypeAndDedupeKey(
-                        reader.getId(), book.getId(),
-                        GrimmlinkMetadataItemType.RATING, dedupeKey)
-                        .ifPresent(metadataItemRepository::delete);
-            }
-            userBookProgressRepository.findByUserIdAndBookId(reader.getId(), book.getId())
-                    .ifPresent(progress -> {
-                        progress.setPersonalRating(null);
-                        userBookProgressRepository.save(progress);
-                    });
+            removeGrimmoryRating(reader, book, dedupeKey);
             return GrimmlinkItemResult.builder()
                     .type("rating")
                     .dedupeKey(dedupeKey)
@@ -352,27 +342,49 @@ public class GrimmlinkMetadataService {
         if (normalizedRating == null) {
             return failedResult("rating", dedupeKey, "invalid_rating");
         }
-        GrimmlinkItemResult result = upsertMetadataItem(
-                reader,
-                book,
-                bookFile,
-                GrimmlinkMetadataItemType.RATING,
-                dedupeKey,
-                payload.getUpdatedAt(),
-                request.getDevice(),
-                request.getDeviceId(),
-                payload);
-        if (!"failed".equals(result.getStatus())) {
-            UserBookProgressEntity progress = userBookProgressRepository
-                    .findByUserIdAndBookId(reader.getId(), book.getId())
-                    .orElseGet(() -> UserBookProgressEntity.builder()
-                            .user(reader)
-                            .book(book)
-                            .build());
-            progress.setPersonalRating(normalizedRating);
-            userBookProgressRepository.save(progress);
+        // Upsert metadata item (may succeed or fail, but always save progress)
+        GrimmlinkItemResult result;
+        if (dedupeKey != null) {
+            result = upsertMetadataItem(
+                    reader, book, bookFile,
+                    GrimmlinkMetadataItemType.RATING,
+                    dedupeKey, payload.getUpdatedAt(),
+                    request.getDevice(), request.getDeviceId(),
+                    payload);
+        } else {
+            result = GrimmlinkItemResult.builder()
+                    .type("rating")
+                    .dedupeKey(null)
+                    .status("synced")
+                    .build();
         }
+        // Always save to UserBookProgressEntity regardless of metadata upsert
+        UserBookProgressEntity progress = userBookProgressRepository
+                .findByUserIdAndBookId(reader.getId(), book.getId())
+                .orElseGet(() -> UserBookProgressEntity.builder()
+                        .user(reader)
+                        .book(book)
+                        .build());
+        progress.setPersonalRating(normalizedRating);
+        userBookProgressRepository.save(progress);
         return result;
+    }
+
+    private void removeGrimmoryRating(
+            BookLoreUserEntity reader,
+            BookEntity book,
+            String dedupeKey) {
+        if (dedupeKey != null) {
+            metadataItemRepository.findByUserIdAndBookIdAndItemTypeAndDedupeKey(
+                    reader.getId(), book.getId(),
+                    GrimmlinkMetadataItemType.RATING, dedupeKey)
+                    .ifPresent(metadataItemRepository::delete);
+        }
+        userBookProgressRepository.findByUserIdAndBookId(reader.getId(), book.getId())
+                .ifPresent(progress -> {
+                    progress.setPersonalRating(null);
+                    userBookProgressRepository.save(progress);
+                });
     }
 
     private Integer normalizePersonalRating(GrimmlinkRatingPayload payload) {
