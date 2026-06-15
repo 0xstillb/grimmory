@@ -1,5 +1,6 @@
 package org.booklore.grimmlink.service;
 
+import org.booklore.config.BookmarkProperties;
 import org.booklore.config.security.userdetails.KoreaderUserDetails;
 import org.booklore.grimmlink.dto.*;
 import org.booklore.grimmlink.model.GrimmlinkMetadataItemEntity;
@@ -32,6 +33,7 @@ import org.springframework.http.ResponseEntity;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -52,6 +54,7 @@ class GrimmlinkServicesBehaviorTest {
     @Mock private UserRepository userRepository;
     @Mock private BookRepository bookRepository;
     @Mock private BookFileRepository bookFileRepository;
+    @Mock private BookMarkRepository bookMarkRepository;
     @Mock private UserBookProgressRepository userBookProgressRepository;
     @Mock private UserBookFileProgressRepository userBookFileProgressRepository;
     @Mock private ReadingSessionRepository readingSessionRepository;
@@ -105,6 +108,8 @@ class GrimmlinkServicesBehaviorTest {
                 bookRepository,
                 bookFileRepository,
                 userBookProgressRepository,
+                bookMarkRepository,
+                new BookmarkProperties(),
                 metadataItemRepository,
                 objectMapper);
         shelfService = new GrimmlinkShelfService(
@@ -546,6 +551,114 @@ class GrimmlinkServicesBehaviorTest {
         assertEquals(8, captor.getValue().getPersonalRating());
         assertSame(reader, captor.getValue().getUser());
         assertSame(book, captor.getValue().getBook());
+    }
+
+    @Test
+    void syncMetadata_createsCurrentGrimmoryPdfBookmark() {
+        GrimmlinkBookmarkPayload bookmark = new GrimmlinkBookmarkPayload();
+        bookmark.setDedupeKey("bookmark-page-42");
+        bookmark.setPage(42);
+        bookmark.setTitle("Page 42");
+        bookmark.setNotes("Remember this");
+        GrimmlinkMetadataSyncRequest request = new GrimmlinkMetadataSyncRequest();
+        request.setBookId(99L);
+        request.setBookmarks(List.of(bookmark));
+
+        when(objectMapper.writeValueAsString(bookmark)).thenReturn("{}");
+        when(metadataItemRepository.findByUserIdAndBookIdAndItemTypeAndDedupeKey(
+                7L, 99L, GrimmlinkMetadataItemType.BOOKMARK, "bookmark-page-42"))
+                .thenReturn(Optional.empty());
+        when(metadataItemRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(bookMarkRepository.findFirstByPageNumberAndBookIdAndUserId(42, 99L, 7L))
+                .thenReturn(Optional.empty());
+
+        GrimmlinkMetadataSyncResponse response = metadataService.syncMetadata(request);
+
+        assertTrue(response.isOk());
+        ArgumentCaptor<BookMarkEntity> captor = ArgumentCaptor.forClass(BookMarkEntity.class);
+        verify(bookMarkRepository).save(captor.capture());
+        assertEquals(42, captor.getValue().getPageNumber());
+        assertEquals("Page 42", captor.getValue().getTitle());
+        assertEquals("Remember this", captor.getValue().getNotes());
+        assertEquals(3, captor.getValue().getPriority());
+        assertSame(reader, captor.getValue().getUser());
+        assertSame(book, captor.getValue().getBook());
+    }
+
+    @Test
+    void syncMetadata_repushBookmarkUpdatesExistingGrimmoryBookmark() {
+        GrimmlinkBookmarkPayload bookmark = new GrimmlinkBookmarkPayload();
+        bookmark.setDedupeKey("bookmark-page-42");
+        bookmark.setPage(42);
+        bookmark.setTitle("Updated title");
+        bookmark.setNotes("Updated notes");
+        bookmark.setCreatedAt(Instant.parse("2026-06-14T10:00:00Z"));
+        GrimmlinkMetadataSyncRequest request = new GrimmlinkMetadataSyncRequest();
+        request.setBookId(99L);
+        request.setBookmarks(List.of(bookmark));
+
+        BookMarkEntity existing = BookMarkEntity.builder()
+                .id(17L)
+                .user(reader)
+                .book(book)
+                .pageNumber(42)
+                .title("Old title")
+                .notes("Old notes")
+                .priority(3)
+                .build();
+
+        when(objectMapper.writeValueAsString(bookmark)).thenReturn("{}");
+        when(metadataItemRepository.findByUserIdAndBookIdAndItemTypeAndDedupeKey(
+                7L, 99L, GrimmlinkMetadataItemType.BOOKMARK, "bookmark-page-42"))
+                .thenReturn(Optional.empty());
+        when(metadataItemRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(bookMarkRepository.findFirstByPageNumberAndBookIdAndUserId(42, 99L, 7L))
+                .thenReturn(Optional.of(existing));
+
+        GrimmlinkMetadataSyncResponse response = metadataService.syncMetadata(request);
+
+        assertTrue(response.isOk());
+        verify(bookMarkRepository).save(existing);
+        assertEquals("Updated title", existing.getTitle());
+        assertEquals("Updated notes", existing.getNotes());
+        assertEquals(LocalDateTime.of(2026, 6, 14, 10, 0), existing.getCreatedAt());
+    }
+
+    @Test
+    void pullMetadata_includesCurrentGrimmoryBookmark() {
+        LocalDateTime updatedAt = LocalDateTime.of(2026, 6, 14, 12, 30);
+        BookMarkEntity bookmark = BookMarkEntity.builder()
+                .id(17L)
+                .user(reader)
+                .userId(7L)
+                .book(book)
+                .bookId(99L)
+                .pageNumber(42)
+                .title("Page 42")
+                .notes("Remember this")
+                .version(2L)
+                .createdAt(updatedAt.minusMinutes(5))
+                .updatedAt(updatedAt)
+                .build();
+        when(bookMarkRepository.findByBookIdAndUserIdOrderByPriorityAscCreatedAtDesc(99L, 7L))
+                .thenReturn(List.of(bookmark));
+        when(metadataItemRepository.findPullItems(
+                anyLong(), anyLong(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        GrimmlinkMetadataPullResponse response = metadataService.pullMetadata(
+                99L, null, null, null, null, 100, "bookmark");
+
+        assertEquals(1, response.getItems().size());
+        GrimmlinkMetadataPullItem pulled = response.getItems().getFirst();
+        assertEquals("bookmark", pulled.getType());
+        assertEquals("grimmory-bookmark:17:2026-06-14T12:30", pulled.getDedupeKey());
+        assertEquals("Grimmory Web", pulled.getDevice());
+        assertInstanceOf(Map.class, pulled.getPayload());
+        Map<?, ?> payload = (Map<?, ?>) pulled.getPayload();
+        assertEquals(42, payload.get("page"));
+        assertEquals("Page 42", payload.get("title"));
+        assertEquals("Remember this", payload.get("notes"));
     }
 
     @Test

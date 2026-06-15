@@ -20,6 +20,10 @@ public interface BookMarkRepository extends JpaRepository<BookMarkEntity, Long> 
     @Query("SELECT COUNT(b) > 0 FROM BookMarkEntity b WHERE b.cfi = :cfi AND b.bookId = :bookId AND b.userId = :userId AND b.id != :excludeId")
     boolean existsByCfiAndBookIdAndUserIdExcludeId(@Param("cfi") String cfi, @Param("bookId") Long bookId, @Param("userId") Long userId, @Param("excludeId") Long excludeId);
 
+    Optional<BookMarkEntity> findFirstByPageNumberAndBookIdAndUserId(Integer pageNumber, Long bookId, Long userId);
+
+    Optional<BookMarkEntity> findFirstByCfiAndBookIdAndUserId(String cfi, Long bookId, Long userId);
+
     // Audiobook bookmark duplicate check (within 5 seconds of position is considered duplicate)
     @Query("SELECT COUNT(b) > 0 FROM BookMarkEntity b WHERE b.bookId = :bookId AND b.userId = :userId " +
            "AND b.positionMs IS NOT NULL " +

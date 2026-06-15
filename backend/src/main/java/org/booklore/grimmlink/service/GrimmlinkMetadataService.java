@@ -1,8 +1,11 @@
 package org.booklore.grimmlink.service;
 
 import lombok.RequiredArgsConstructor;
+import org.booklore.config.BookmarkProperties;
 import org.booklore.exception.ApiError;
+import org.booklore.grimmlink.dto.GrimmlinkBookmarkPayload;
 import org.booklore.grimmlink.dto.GrimmlinkItemResult;
+import org.booklore.grimmlink.dto.GrimmlinkLocationPayload;
 import org.booklore.grimmlink.dto.GrimmlinkMetadataBatchResponse;
 import org.booklore.grimmlink.dto.GrimmlinkMetadataPullItem;
 import org.booklore.grimmlink.dto.GrimmlinkMetadataPullResponse;
@@ -16,8 +19,10 @@ import org.booklore.grimmlink.repository.GrimmlinkMetadataItemRepository;
 import org.booklore.model.entity.BookEntity;
 import org.booklore.model.entity.BookFileEntity;
 import org.booklore.model.entity.BookLoreUserEntity;
+import org.booklore.model.entity.BookMarkEntity;
 import org.booklore.model.entity.UserBookProgressEntity;
 import org.booklore.repository.BookFileRepository;
+import org.booklore.repository.BookMarkRepository;
 import org.booklore.repository.BookRepository;
 import org.booklore.repository.UserBookProgressRepository;
 import org.springframework.data.domain.PageRequest;
@@ -29,7 +34,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -46,6 +55,8 @@ public class GrimmlinkMetadataService {
     private final BookRepository bookRepository;
     private final BookFileRepository bookFileRepository;
     private final UserBookProgressRepository userBookProgressRepository;
+    private final BookMarkRepository bookMarkRepository;
+    private final BookmarkProperties bookmarkProperties;
     private final GrimmlinkMetadataItemRepository metadataItemRepository;
     private final ObjectMapper objectMapper;
 
@@ -75,16 +86,7 @@ public class GrimmlinkMetadataService {
                         item))
                 .toList();
         List<GrimmlinkItemResult> bookmarks = normalized.getBookmarks().stream()
-                .map(item -> upsertMetadataItem(
-                        reader,
-                        book,
-                        bookFile,
-                        GrimmlinkMetadataItemType.BOOKMARK,
-                        item.getDedupeKey(),
-                        item.getUpdatedAt(),
-                        normalized.getDevice(),
-                        normalized.getDeviceId(),
-                        item))
+                .map(item -> syncBookmark(reader, book, bookFile, normalized, item))
                 .toList();
         return GrimmlinkMetadataSyncResponse.builder()
                 .bookId(book.getId())
@@ -142,13 +144,26 @@ public class GrimmlinkMetadataService {
                             .build())
                     .ifPresent(items::add);
         }
-        int storedItemLimit = Math.max(0, normalizedLimit - items.size());
-        storedItems.stream()
-                .limit(storedItemLimit)
+        List<GrimmlinkMetadataPullItem> candidates = new ArrayList<>(storedItems);
+        if (itemType == null || itemType == GrimmlinkMetadataItemType.BOOKMARK) {
+            bookMarkRepository.findByBookIdAndUserIdOrderByPriorityAscCreatedAtDesc(book.getId(), reader.getId())
+                    .stream()
+                    .map(bookmark -> toGrimmoryBookmarkPullItem(bookmark, bookFile))
+                    .filter(bookmark -> effectiveSince == null
+                            || bookmark.getUpdatedAt() == null
+                            || bookmark.getUpdatedAt().isAfter(effectiveSince))
+                    .forEach(candidates::add);
+        }
+        candidates.sort(Comparator.comparing(
+                GrimmlinkMetadataPullItem::getUpdatedAt,
+                Comparator.nullsLast(Comparator.naturalOrder())));
+        int candidateLimit = Math.max(0, normalizedLimit - items.size());
+        candidates.stream()
+                .limit(candidateLimit)
                 .forEach(items::add);
-        Instant nextCursor = storedItems.isEmpty() || storedItemLimit == 0
+        Instant nextCursor = candidates.isEmpty() || candidateLimit == 0
                 ? effectiveSince
-                : storedItems.get(Math.min(storedItems.size(), storedItemLimit) - 1).getUpdatedAt();
+                : candidates.get(Math.min(candidates.size(), candidateLimit) - 1).getUpdatedAt();
         return GrimmlinkMetadataPullResponse.builder()
                 .bookId(book.getId())
                 .bookFileId(bookFile != null ? bookFile.getId() : null)
@@ -353,6 +368,146 @@ public class GrimmlinkMetadataService {
             return value * 2;
         }
         return null;
+    }
+
+    private GrimmlinkItemResult syncBookmark(
+            BookLoreUserEntity reader,
+            BookEntity book,
+            BookFileEntity bookFile,
+            GrimmlinkMetadataSyncRequest request,
+            GrimmlinkBookmarkPayload payload) {
+        GrimmlinkItemResult result = upsertMetadataItem(
+                reader,
+                book,
+                bookFile,
+                GrimmlinkMetadataItemType.BOOKMARK,
+                payload.getDedupeKey(),
+                payload.getUpdatedAt(),
+                request.getDevice(),
+                request.getDeviceId(),
+                payload);
+        if (!"failed".equals(result.getStatus())) {
+            saveGrimmoryBookmark(reader, book, payload);
+        }
+        return result;
+    }
+
+    private void saveGrimmoryBookmark(
+            BookLoreUserEntity reader,
+            BookEntity book,
+            GrimmlinkBookmarkPayload payload) {
+        Integer pageNumber = bookmarkPage(payload);
+        String cfi = pageNumber == null ? bookmarkAnchor(payload) : null;
+        if (pageNumber == null && cfi == null) {
+            return;
+        }
+        Optional<BookMarkEntity> existing = pageNumber != null
+                ? bookMarkRepository.findFirstByPageNumberAndBookIdAndUserId(
+                        pageNumber,
+                        book.getId(),
+                        reader.getId())
+                : bookMarkRepository.findFirstByCfiAndBookIdAndUserId(
+                        cfi,
+                        book.getId(),
+                        reader.getId());
+        BookMarkEntity bookmark = existing.orElseGet(() -> BookMarkEntity.builder()
+                .user(reader)
+                .book(book)
+                .pageNumber(pageNumber)
+                .cfi(cfi)
+                .priority(bookmarkProperties.getDefaultPriority())
+                .build());
+        bookmark.setTitle(truncate(bookService.trimToNull(payload.getTitle()), bookmarkProperties.getMaxTitleLength()));
+        bookmark.setNotes(truncate(bookService.trimToNull(payload.getNotes()), bookmarkProperties.getMaxNotesLength()));
+        if (payload.getCreatedAt() != null) {
+            bookmark.setCreatedAt(toLocalDateTime(payload.getCreatedAt()));
+        }
+        bookMarkRepository.save(bookmark);
+    }
+
+    private Integer bookmarkPage(GrimmlinkBookmarkPayload payload) {
+        Integer page = payload.getPage();
+        if (page == null && payload.getLocation() != null) {
+            page = payload.getLocation().getPageno();
+        }
+        return page != null && page > 0 ? page : null;
+    }
+
+    private String bookmarkAnchor(GrimmlinkBookmarkPayload payload) {
+        GrimmlinkLocationPayload location = payload.getLocation();
+        if (location == null) {
+            return null;
+        }
+        String anchor = firstNonBlank(
+                location.getCfi(),
+                location.getPos0(),
+                location.getRaw());
+        return truncate(anchor, bookmarkProperties.getMaxCfiLength());
+    }
+
+    private GrimmlinkMetadataPullItem toGrimmoryBookmarkPullItem(
+            BookMarkEntity bookmark,
+            BookFileEntity bookFile) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        putIfNotNull(payload, "title", bookmark.getTitle());
+        putIfNotNull(payload, "notes", bookmark.getNotes());
+        putIfNotNull(payload, "page", bookmark.getPageNumber());
+        Map<String, Object> location = new LinkedHashMap<>();
+        putIfNotNull(location, "pageno", bookmark.getPageNumber());
+        putIfNotNull(location, "cfi", bookmark.getCfi());
+        if (!location.isEmpty()) {
+            payload.put("location", location);
+        }
+        putIfNotNull(payload, "createdAt", toInstant(bookmark.getCreatedAt()));
+        putIfNotNull(payload, "updatedAt", toInstant(bookmark.getUpdatedAt()));
+        payload.put("source", "grimmory-web");
+
+        String version = bookmark.getUpdatedAt() != null
+                ? bookmark.getUpdatedAt().toString()
+                : String.valueOf(bookmark.getVersion());
+        return GrimmlinkMetadataPullItem.builder()
+                .id("grimmory-bookmark:" + bookmark.getId())
+                .type("bookmark")
+                .bookId(bookmark.getBookId() != null
+                        ? bookmark.getBookId()
+                        : bookmark.getBook().getId())
+                .bookFileId(bookFile != null ? bookFile.getId() : null)
+                .dedupeKey("grimmory-bookmark:" + bookmark.getId() + ":" + version)
+                .payload(payload)
+                .updatedAt(toInstant(bookmark.getUpdatedAt()))
+                .device("Grimmory Web")
+                .build();
+    }
+
+    private void putIfNotNull(Map<String, Object> target, String key, Object value) {
+        if (value != null) {
+            target.put(key, value);
+        }
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            String normalized = bookService.trimToNull(value);
+            if (normalized != null) {
+                return normalized;
+            }
+        }
+        return null;
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
+    }
+
+    private LocalDateTime toLocalDateTime(Instant value) {
+        return value != null ? LocalDateTime.ofInstant(value, ZoneOffset.UTC) : null;
+    }
+
+    private Instant toInstant(LocalDateTime value) {
+        return value != null ? value.toInstant(ZoneOffset.UTC) : null;
     }
 
     private GrimmlinkItemResult upsertMetadataItem(
