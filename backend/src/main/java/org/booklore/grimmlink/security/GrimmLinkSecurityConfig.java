@@ -31,7 +31,12 @@ public class GrimmLinkSecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        .dispatcherTypeMatchers(
+                                DispatcherType.ASYNC,
+                                DispatcherType.ERROR,
+                                DispatcherType.FORWARD,
+                                DispatcherType.INCLUDE
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(grimmlinkAuthFilter, UsernamePasswordAuthenticationFilter.class)

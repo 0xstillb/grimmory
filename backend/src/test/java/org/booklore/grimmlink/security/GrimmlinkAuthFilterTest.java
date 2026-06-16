@@ -93,6 +93,32 @@ class GrimmlinkAuthFilterTest {
                 org.mockito.ArgumentMatchers.any());
     }
 
+    @Test
+    void skipsOnAsyncDispatch_whenAlreadyFiltered() throws Exception {
+        // Simulate the OncePerRequestFilter already-filtered attribute that
+        // is set on the initial REQUEST dispatch. On ASYNC re-dispatch the
+        // filter must skip itself so the chain-level .dispatcherTypeMatchers(ASYNC)
+        // can permit the request without re-authentication.
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setDispatcherType(jakarta.servlet.DispatcherType.ASYNC);
+        request.addHeader("x-auth-user", "reader");
+        request.addHeader("x-auth-key", KEY);
+        // Set the attribute that OncePerRequestFilter uses to track already-filtered
+        String alreadyFilteredAttrName = filter.getClass().getName() + ".FILTERED";
+        request.setAttribute(alreadyFilteredAttrName, "true");
+
+        FilterChain chain = mock(FilterChain.class);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(request, response, chain);
+
+        // Filter should have skipped → no auth set, but chain was called
+        assertNull(SecurityContextHolder.getContext().getAuthentication(),
+                "Auth should not be set on ASYNC dispatch when already filtered");
+        verify(chain).doFilter(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
     private MockHttpServletRequest authenticatedRequest() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("x-auth-user", "reader");
