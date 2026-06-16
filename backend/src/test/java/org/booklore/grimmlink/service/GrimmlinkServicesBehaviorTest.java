@@ -24,12 +24,12 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.core.io.Resource;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.ResponseEntity;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
@@ -1081,11 +1081,11 @@ class GrimmlinkServicesBehaviorTest {
 
     @Test
     void downloadBook_checksAccessAndReturnsBinaryResponse() {
-        Resource resource = mock(Resource.class);
-        ResponseEntity<Resource> expected = ResponseEntity.ok(resource);
+        StreamingResponseBody resource = mock(StreamingResponseBody.class);
+        ResponseEntity<StreamingResponseBody> expected = ResponseEntity.ok(resource);
         when(bookDownloadService.downloadBook(99L)).thenReturn(expected);
 
-        ResponseEntity<Resource> result = bookService.downloadBook(99L);
+        ResponseEntity<StreamingResponseBody> result = bookService.downloadBook(99L);
 
         assertSame(expected, result);
         verify(bookDownloadService).downloadBook(99L);

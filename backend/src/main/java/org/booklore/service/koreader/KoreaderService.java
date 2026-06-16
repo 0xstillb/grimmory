@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.booklore.config.security.userdetails.KoreaderUserDetails;
 import org.booklore.exception.ApiError;
+import org.booklore.grimmlink.repository.GrimmLinkBookLookupRepository;
 import org.booklore.model.dto.progress.KoreaderProgress;
 import org.booklore.model.entity.*;
 import org.booklore.model.enums.BookFileType;
@@ -34,6 +35,7 @@ public class KoreaderService {
     private final KoreaderUserRepository koreaderUserRepository;
     private final HardcoverSyncService hardcoverSyncService;
     private final EpubCfiService epubCfiService;
+    private final GrimmLinkBookLookupRepository grimmLinkBookLookupRepository;
 
     public ResponseEntity<Map<String, String>> authorizeUser() {
         KoreaderUserDetails authDetails = getAuthDetails();
@@ -259,7 +261,7 @@ public class KoreaderService {
     private BookEntity findBookByHash(String bookHash) {
         BookEntity book = bookRepository.findByCurrentHash(bookHash).orElse(null);
         if (book == null) {
-            List<BookEntity> candidates = bookRepository.findAllByBookHash(bookHash);
+            List<BookEntity> candidates = grimmLinkBookLookupRepository.findAllByBookHash(bookHash);
             if (candidates != null && !candidates.isEmpty()) {
                 book = candidates.get(0);
             }
