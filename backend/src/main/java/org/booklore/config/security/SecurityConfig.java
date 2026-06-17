@@ -1,8 +1,6 @@
 package org.booklore.config.security;
 
 import org.booklore.config.security.filter.*;
-import org.booklore.grimmlink.GrimmlinkRoutes;
-import org.booklore.grimmlink.security.GrimmlinkAuthFilter;
 import org.booklore.config.security.service.OpdsUserDetailsService;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
@@ -126,19 +124,6 @@ public class SecurityConfig {
 
     @Bean
     @Order(3)
-    public SecurityFilterChain grimmlinkSecurityChain(HttpSecurity http, GrimmlinkAuthFilter grimmlinkAuthFilter) throws Exception {
-        http
-                .securityMatcher(GrimmlinkRoutes.API_PREFIX + "/**")
-                .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
-                .addFilterBefore(grimmlinkAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(authenticationCheckFilter, UsernamePasswordAuthenticationFilter.class);
-        return http.build();
-    }
-
-    @Bean
-    @Order(4)
     public SecurityFilterChain koreaderSecurityChain(HttpSecurity http, KoreaderAuthFilter koreaderAuthFilter) throws Exception {
         http
                 .securityMatcher("/api/koreader/**")
@@ -151,7 +136,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(5)
+    @Order(3)
     public SecurityFilterChain koboSecurityChain(HttpSecurity http, KoboAuthFilter koboAuthFilter) throws Exception {
         http
                 .securityMatcher("/api/kobo/**")
@@ -163,7 +148,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(6)
+    @Order(4)
     public SecurityFilterChain coverJwtApiSecurityChain(HttpSecurity http, QueryParameterJwtFilter queryParameterJwtFilter) throws Exception {
         http
                 .securityMatcher("/api/v1/media/**")
@@ -182,7 +167,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(7)
+    @Order(5)
     public SecurityFilterChain customFontSecurityChain(HttpSecurity http, QueryParameterJwtFilter queryParameterJwtFilter) throws Exception {
         http
                 .securityMatcher("/api/v1/custom-fonts/*/file")
@@ -199,7 +184,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(8)
+    @Order(6)
     public SecurityFilterChain epubStreamingSecurityChain(HttpSecurity http, QueryParameterJwtFilter queryParameterJwtFilter) throws Exception {
         http
                 .securityMatcher("/api/v1/epub/*/file/**")
@@ -216,7 +201,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(9)
+    @Order(7)
     public SecurityFilterChain audiobookStreamingSecurityChain(HttpSecurity http, QueryParameterJwtFilter queryParameterJwtFilter) throws Exception {
         http
                 .securityMatcher("/api/v1/audiobooks/*/stream/**", "/api/v1/audiobooks/*/track/*/stream/**", "/api/v1/audiobooks/*/cover")
@@ -233,7 +218,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(10)
+    @Order(8)
     public SecurityFilterChain bookDownloadSecurityChain(HttpSecurity http, QueryParameterJwtFilter queryParameterJwtFilter) throws Exception {
         http
                 .securityMatcher("/api/v1/books/*/download", "/api/v1/books/*/download-all", "/api/v1/books/*/files/*/download")
@@ -270,7 +255,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(11)
+    @Order(10)
     public SecurityFilterChain jwtApiSecurityChain(HttpSecurity http) throws Exception {
         var parser = new PathPatternParser();
         final List<PathPattern> matchPatterns = Stream.of(
@@ -321,7 +306,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(12)
+    @Order(11)
     public SecurityFilterChain staticResourcesSecurityChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)

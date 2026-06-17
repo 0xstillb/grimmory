@@ -5,8 +5,8 @@ import org.booklore.grimmlink.GrimmlinkRoutes;
 import org.booklore.grimmlink.dto.GrimmlinkReadStatusRequest;
 import org.booklore.grimmlink.service.GrimmlinkBookService;
 import org.booklore.model.dto.Book;
-import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -25,7 +25,7 @@ public class GrimmlinkV1BookController {
     }
 
     @GetMapping("/{bookId}/download")
-    public ResponseEntity<Resource> downloadBook(@PathVariable Long bookId) {
+    public ResponseEntity<StreamingResponseBody> downloadBook(@PathVariable Long bookId) {
         return bookService.downloadBook(bookId);
     }
 
