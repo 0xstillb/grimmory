@@ -15,7 +15,6 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -127,8 +126,13 @@ public class PdfMetadataExtractor implements FileMetadataExtractor {
                 metadataBuilder.language(languageValue);
             }
 
-            XmpMetadata xmp = XmpMetadataParser.parseFrom(doc);
-        Optional<RawXmpMetadata> rawXmp = parseRawXmp(doc);
+            byte[] rawXmpBytes = doc.xmpMetadata();
+            String normalizedXmp = rawXmpBytes == null
+                    ? null
+                    : SecureXmlUtils.normalizeMissingXmpNamespaces(new String(rawXmpBytes, StandardCharsets.UTF_8));
+            XmpMetadata xmp = XmpMetadataParser.parse(
+                    normalizedXmp == null ? null : normalizedXmp.getBytes(StandardCharsets.UTF_8));
+            Optional<RawXmpMetadata> rawXmp = parseRawXmp(normalizedXmp);
 
             // Dublin Core
         preferStructuredValue(xmp.title(), rawXmp.flatMap(xmpData -> xmpData.readFirstText(DC_NAMESPACE, "title")))
@@ -183,10 +187,8 @@ public class PdfMetadataExtractor implements FileMetadataExtractor {
 
         // Calibre fallback for un-prefixed series_index (some tools write it like this, and library skips them)
         if (xmp.calibreSeriesIndex().isEmpty()) {
-            byte[] rawXmpBytes = doc.xmpMetadata();
-            if (rawXmpBytes != null) {
-                String xmpStr = new String(rawXmpBytes, StandardCharsets.UTF_8);
-                Matcher siMatcher = Pattern.compile("<series_index>([^<]+)</series_index>").matcher(xmpStr);
+            if (normalizedXmp != null) {
+                Matcher siMatcher = Pattern.compile("<series_index>([^<]+)</series_index>").matcher(normalizedXmp);
                 if (siMatcher.find()) {
                     try { metadataBuilder.seriesNumber(Float.parseFloat(siMatcher.group(1).trim())); } catch (Exception _) {}
                 }
@@ -357,15 +359,13 @@ private static String cleanIsbn(String value) {
                 .or(() -> fallback.filter(StringUtils::isNotBlank));
     }
 
-    private Optional<RawXmpMetadata> parseRawXmp(PdfDocument doc) {
-        byte[] rawXmp = doc.xmpMetadata();
-        if (rawXmp == null || rawXmp.length == 0) {
+    private Optional<RawXmpMetadata> parseRawXmp(String xml) {
+        if (StringUtils.isBlank(xml)) {
             return Optional.empty();
         }
 
         try {
-            Document document = SecureXmlUtils.createSecureDocumentBuilder(true)
-                    .parse(new ByteArrayInputStream(rawXmp));
+            Document document = SecureXmlUtils.parseXml(xml, true);
             return Optional.of(new RawXmpMetadata(document));
         } catch (Exception e) {
             log.debug("Failed to parse raw XMP metadata for PDF fallback extraction: {}", e.getMessage());

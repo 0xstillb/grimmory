@@ -142,6 +142,49 @@ class ReadingProgressServiceTest {
     }
 
     @Test
+    void enrichBookWithProgress_convertsStoredKoreaderFractionToPercent() {
+        for (float percentage : List.of(1.0f, 10.0f, 50.0f)) {
+            Book book = Book.builder().id(1L).build();
+            UserBookProgressEntity progress = new UserBookProgressEntity();
+            progress.setKoreaderProgressPercent(percentage / 100.0f);
+
+            readingProgressService.enrichBookWithProgress(book, progress);
+
+            assertNotNull(book.getKoreaderProgress());
+            assertEquals(percentage, book.getKoreaderProgress().getPercentage());
+        }
+    }
+
+    @Test
+    void enrichBookWithProgress_preservesEarlyPreviewPercentStorage() {
+        Book book = Book.builder().id(1L).build();
+        UserBookProgressEntity progress = new UserBookProgressEntity();
+        progress.setKoreaderProgressPercent(20.4f);
+
+        readingProgressService.enrichBookWithProgress(book, progress);
+
+        assertNotNull(book.getKoreaderProgress());
+        assertEquals(20.4f, book.getKoreaderProgress().getPercentage());
+    }
+
+    @Test
+    void enrichBookWithProgress_clampsKoreaderPercentage() {
+        Book belowZero = Book.builder().id(1L).build();
+        UserBookProgressEntity negativeProgress = new UserBookProgressEntity();
+        negativeProgress.setKoreaderProgressPercent(-10.0f);
+
+        Book aboveHundred = Book.builder().id(2L).build();
+        UserBookProgressEntity excessiveProgress = new UserBookProgressEntity();
+        excessiveProgress.setKoreaderProgressPercent(125.0f);
+
+        readingProgressService.enrichBookWithProgress(belowZero, negativeProgress);
+        readingProgressService.enrichBookWithProgress(aboveHundred, excessiveProgress);
+
+        assertEquals(0.0f, belowZero.getKoreaderProgress().getPercentage());
+        assertEquals(100.0f, aboveHundred.getKoreaderProgress().getPercentage());
+    }
+
+    @Test
     void enrichBookWithProgress_withFileProgress_shouldOverlayFileProgress() {
         Book book = Book.builder().id(1L).build();
 
@@ -287,6 +330,12 @@ class ReadingProgressServiceTest {
         assertEquals(5, progress.getPdfProgress());
         assertEquals(ReadStatus.READING, progress.getReadStatus());
         assertEquals(50f, progress.getPdfProgressPercent());
+        assertEquals("5", progress.getKoreaderProgress());
+        assertEquals(0.5f, progress.getKoreaderProgressPercent());
+        assertEquals("WEB_READER", progress.getKoreaderDevice());
+        assertEquals("web-reader", progress.getKoreaderDeviceId());
+        assertNotNull(progress.getKoreaderLastSyncTime());
+        assertNotNull(progress.getLastReadTime());
     }
 
     @Test

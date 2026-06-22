@@ -87,6 +87,26 @@ class EpubMetadataExtractorTest {
                 </package>""".formatted(metadataContent, manifestContent);
     }
 
+    @Test
+    void extractsMetadataWhenEmbeddedOpfUsesRdfRootWithoutRdfNamespace() throws IOException {
+        String opf = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/">
+                  <rdf:Description>
+                    <metadata>
+                      <dc:title>Recovered EPUB Title</dc:title>
+                      <dc:creator>Author EPUB</dc:creator>
+                    </metadata>
+                  </rdf:Description>
+                </rdf:RDF>
+                """;
+
+        BookMetadata metadata = extractor.extractMetadata(createEpub(opf));
+
+        assertThat(metadata.getTitle()).isEqualTo("Recovered EPUB Title");
+        assertThat(metadata.getAuthors()).containsExactly("Author EPUB");
+    }
+
     @Nested
     class BasicMetadataExtraction {
 

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import org.booklore.config.security.userdetails.KoreaderUserDetails;
 import org.booklore.exception.APIException;
+import org.booklore.grimmlink.repository.GrimmLinkBookLookupRepository;
 import org.booklore.model.dto.progress.KoreaderProgress;
 import org.booklore.model.entity.BookEntity;
 import org.booklore.model.entity.BookFileEntity;
@@ -58,6 +59,8 @@ class KoreaderServiceTest {
     HardcoverSyncService hardcoverSyncService;
     @Mock
     EpubCfiService epubCfiService;
+    @Mock
+    GrimmLinkBookLookupRepository grimmLinkBookLookupRepository;
 
     @InjectMocks
     KoreaderService service;

@@ -9,7 +9,10 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -91,6 +94,41 @@ class PdfMetadataExtractorTest {
         BookMetadata meta = extractor.extractMetadata(pdf);
         assertThat(meta.getTitle()).isEqualTo("test");
         assertThat(meta.getPageCount()).isEqualTo(1);
+    }
+
+    @Test
+    void extractsMetadataWhenRawXmpUsesUndeclaredRdfAndDcPrefixes() throws Exception {
+        File pdf = createPdfWithRawXmp("""
+                <?xml version="1.0" encoding="UTF-8"?>
+                <x:xmpmeta xmlns:x="adobe:ns:meta/">
+                  <rdf:RDF>
+                    <rdf:Description>
+                      <dc:title>Recovered PDF Title</dc:title>
+                      <dc:creator>
+                        <rdf:Seq>
+                          <rdf:li>Author PDF</rdf:li>
+                        </rdf:Seq>
+                      </dc:creator>
+                    </rdf:Description>
+                  </rdf:RDF>
+                </x:xmpmeta>
+                """);
+
+        ByteArrayOutputStream parserErrors = new ByteArrayOutputStream();
+        BookMetadata meta;
+        synchronized (PdfMetadataExtractorTest.class) {
+            PrintStream originalError = System.err;
+            try (PrintStream capturedError = new PrintStream(parserErrors, true, StandardCharsets.UTF_8)) {
+                System.setErr(capturedError);
+                meta = extractor.extractMetadata(pdf);
+            } finally {
+                System.setErr(originalError);
+            }
+        }
+
+        assertThat(meta.getTitle()).isEqualTo("Recovered PDF Title");
+        assertThat(meta.getAuthors()).containsExactly("Author PDF");
+        assertThat(parserErrors.toString(StandardCharsets.UTF_8)).doesNotContain("[Fatal Error]");
     }
 
     // --- Document info (non-XMP) ---

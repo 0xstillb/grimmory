@@ -2,11 +2,22 @@ package org.booklore.util;
 
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
+import org.w3c.dom.Document;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
+import org.xml.sax.helpers.DefaultHandler;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import java.io.StringReader;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @UtilityClass
@@ -15,6 +26,24 @@ public class SecureXmlUtils {
     // DocumentBuilderFactory is thread-safe after configuration cache one per namespace-aware mode
     private static final DocumentBuilderFactory NS_AWARE_FACTORY;
     private static final DocumentBuilderFactory NON_NS_AWARE_FACTORY;
+
+    /**
+     * Known XMP namespace prefixes and their URIs.
+     * Add new prefixes here — no other code change needed.
+     */
+    private static final Map<String, String> KNOWN_NAMESPACES = Map.ofEntries(
+            Map.entry("rdf", "http://www.w3.org/1999/02/22-rdf-syntax-ns#"),
+            Map.entry("dc", "http://purl.org/dc/elements/1.1/"),
+            Map.entry("xmp", "http://ns.adobe.com/xap/1.0/"),
+            Map.entry("xmpidq", "http://ns.adobe.com/xmp/identifier/qual/1.0/"),
+            Map.entry("calibre", "http://calibre.kovidgoyal.net/2009/metadata"),
+            Map.entry("calibreSI", "http://calibre-ebook.com/xmp-namespace/seriesIndex"),
+            Map.entry("booklore", "http://booklore.org/metadata/1.0/")
+    );
+
+    private static final Pattern RDF_ROOT_PATTERN = Pattern.compile("<rdf:RDF\\b([^>]*)>");
+    private static final Pattern DECLARED_NS_PATTERN = Pattern.compile("\\bxmlns:([a-zA-Z][a-zA-Z0-9]*)\\s*=");
+    private static final Pattern PREFIX_USAGE_PATTERN = Pattern.compile("(?:<|</|\\s)([a-zA-Z][a-zA-Z0-9]*):");
 
     static {
         try {
@@ -48,5 +77,75 @@ public class SecureXmlUtils {
             throws ParserConfigurationException {
         // newDocumentBuilder() is NOT thread-safe must create new builder each time
         return getFactory(namespaceAware).newDocumentBuilder();
+    }
+
+    public static Document parseXml(String xml, boolean namespaceAware) throws Exception {
+        String normalizedXml = namespaceAware ? normalizeMissingXmpNamespaces(xml) : xml;
+        return parseStrict(normalizedXml, namespaceAware);
+    }
+
+    public static String normalizeMissingXmpNamespaces(String xml) {
+        if (xml == null) {
+            return xml;
+        }
+        Matcher rootMatcher = RDF_ROOT_PATTERN.matcher(xml);
+        if (!rootMatcher.find()) {
+            return xml;
+        }
+
+        String rootAttributes = rootMatcher.group(1);
+
+        // Collect prefixes already declared on the root element
+        Set<String> declaredPrefixes = new HashSet<>();
+        Matcher declMatcher = DECLARED_NS_PATTERN.matcher(rootAttributes);
+        while (declMatcher.find()) {
+            declaredPrefixes.add(declMatcher.group(1));
+        }
+
+        // Scan the document for all used prefixes
+        Set<String> usedPrefixes = new HashSet<>();
+        Matcher usageMatcher = PREFIX_USAGE_PATTERN.matcher(xml);
+        while (usageMatcher.find()) {
+            usedPrefixes.add(usageMatcher.group(1));
+        }
+
+        // Inject declarations for known-but-undeclared prefixes that are actually used
+        StringBuilder missingNamespaces = new StringBuilder();
+        for (var entry : KNOWN_NAMESPACES.entrySet()) {
+            String prefix = entry.getKey();
+            if (usedPrefixes.contains(prefix) && !declaredPrefixes.contains(prefix)) {
+                missingNamespaces.append(" xmlns:").append(prefix)
+                        .append("=\"").append(entry.getValue()).append('"');
+            }
+        }
+
+        if (missingNamespaces.isEmpty()) {
+            return xml;
+        }
+
+        String normalizedRoot = "<rdf:RDF" + missingNamespaces + rootAttributes + ">";
+        return rootMatcher.replaceFirst(Matcher.quoteReplacement(normalizedRoot));
+    }
+
+    private static Document parseStrict(String xml, boolean namespaceAware) throws Exception {
+        var builder = createSecureDocumentBuilder(namespaceAware);
+        builder.setErrorHandler(new SilentErrorHandler());
+        return builder.parse(new InputSource(new StringReader(xml)));
+    }
+
+    private static final class SilentErrorHandler extends DefaultHandler {
+        @Override
+        public void warning(SAXParseException e) {
+        }
+
+        @Override
+        public void error(SAXParseException e) throws SAXException {
+            throw e;
+        }
+
+        @Override
+        public void fatalError(SAXParseException e) throws SAXException {
+            throw e;
+        }
     }
 }

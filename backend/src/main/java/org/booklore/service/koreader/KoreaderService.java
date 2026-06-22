@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.booklore.config.security.userdetails.KoreaderUserDetails;
 import org.booklore.exception.ApiError;
+import org.booklore.grimmlink.repository.GrimmLinkBookLookupRepository;
 import org.booklore.model.dto.progress.KoreaderProgress;
 import org.booklore.model.entity.*;
 import org.booklore.model.enums.BookFileType;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -33,6 +35,7 @@ public class KoreaderService {
     private final KoreaderUserRepository koreaderUserRepository;
     private final HardcoverSyncService hardcoverSyncService;
     private final EpubCfiService epubCfiService;
+    private final GrimmLinkBookLookupRepository grimmLinkBookLookupRepository;
 
     public ResponseEntity<Map<String, String>> authorizeUser() {
         KoreaderUserDetails authDetails = getAuthDetails();
@@ -256,8 +259,17 @@ public class KoreaderService {
     }
 
     private BookEntity findBookByHash(String bookHash) {
-        return bookRepository.findByCurrentHash(bookHash)
-                .orElseThrow(() -> ApiError.GENERIC_NOT_FOUND.createException("Book not found for hash " + bookHash));
+        BookEntity book = bookRepository.findByCurrentHash(bookHash).orElse(null);
+        if (book == null) {
+            List<BookEntity> candidates = grimmLinkBookLookupRepository.findAllByBookHash(bookHash);
+            if (candidates != null && !candidates.isEmpty()) {
+                book = candidates.get(0);
+            }
+        }
+        if (book == null) {
+            throw ApiError.GENERIC_NOT_FOUND.createException("Book not found for hash " + bookHash);
+        }
+        return book;
     }
 
     private BookLoreUserEntity findBookLoreUser(long userId) {

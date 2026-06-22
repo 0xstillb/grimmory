@@ -1,5 +1,6 @@
 > [!NOTE]
 > Grimmory is an independent community fork of Booklore.
+> **Flyway migrations:** This fork reserves the `V9xxx` block for fork-only schema changes (e.g. `V9001__`, `V9002__`) to avoid collisions with upstream migrations.
 
 <div align="center">
 
@@ -94,7 +95,8 @@ MYSQL_DATABASE=grimmory
 
 ### Step 2: Docker Compose
 
-Stable images are published from semantic-release tags on `main` as `vX.Y.Z` plus `latest`. Nightly images are built from `develop` and tagged `nightly`.
+See [Fork Docker Images](docs/FORK-DOCKER-IMAGES.md) for the fork's stable,
+test, preview, and rollback image channels.
 
 > [!NOTE]
 > Migrating from an existing Booklore container? You can keep your current service name, `container_name`, database name and user, ports, and mounted volumes the same. Replace only the `image:` line with `grimmory/grimmory:<tag>` or `ghcr.io/grimmory-tools/grimmory:<tag>`.
@@ -198,6 +200,16 @@ just test          # Run backend and frontend tests
 just api test      # Run backend tests only
 just ui dev        # Start the frontend dev server
 ```
+
+### Fork-Specific GrimmLink And OPF Docs
+
+This fork maintains upstream-friendly GrimmLink and OPF support:
+
+- [GrimmLink V1 API](docs/GRIMMLINK-V1-API.md)
+- [OPF-Adjacent Metadata](docs/OPF-ADJACENT-METADATA.md)
+- [Fork Docker Images](docs/FORK-DOCKER-IMAGES.md)
+- [Testing GrimmLink](docs/TESTING-GRIMMLINK.md)
+- [Upstream-Friendly Maintenance](docs/UPSTREAM-FRIENDLY-MAINTENANCE.md)
 
 ---
 

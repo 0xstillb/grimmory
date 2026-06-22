@@ -1,0 +1,117 @@
+name: Grimmory - Release
+
+on:
+  push:
+    tags:
+      - 'v*-grimmory'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v3.2.1-grimmory)'
+        required: true
+        type: string
+
+concurrency:
+  group: grimmory-release
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build, Publish, and Release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Determine Release Tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "release_tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout Repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          ref: main
+
+      - name: Set Up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: 25
+          distribution: temurin
+          cache: gradle
+
+      - name: Build and Stage Release Artifacts
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.release_tag }}
+        run: |
+          cd backend
+          ./gradlew --no-daemon buildOpenApiArtifacts
+          JAR_FILE="$(ls build/libs/*.jar | grep -v plain | head -1)"
+          cp "$JAR_FILE" "../grimmory-${RELEASE_TAG}.jar"
+          cp "build/openapi/grimmory-openapi.json" "../openapi.json"
+
+      - name: Set Up QEMU for Multi-Arch Builds
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+        with:
+          cache-image: false
+
+      - name: Set Up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Authenticate to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and Push Image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.release_tag }}
+          build-args: |
+            APP_VERSION=${{ steps.tag.outputs.release_tag }}
+            APP_REVISION=${{ github.sha }}
+          cache-from: |
+            type=gha,scope=image-shared
+            type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+          cache-to: |
+            type=gha,scope=image-shared,mode=max
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
+        if: ${{ github.event_name == 'push' }}
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          name: Grimmory ${{ steps.tag.outputs.release_tag }}
+          generate_release_notes: true
+          files: |
+            grimmory-${{ steps.tag.outputs.release_tag }}.jar
+            openapi.json
+
+      - name: Write Workflow Summary
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.release_tag }}
+        run: |
+          {
+            echo "## Grimmory Release Published"
+            echo
+            echo "- **Tag**: \`${RELEASE_TAG}\`"
+            echo "- **Images**:"
+            echo "  - \`ghcr.io/${{ github.repository }}:latest\`"
+            echo "  - \`ghcr.io/${{ github.repository }}:${RELEASE_TAG}\`"
+            echo "- **Platforms**: \`linux/amd64,linux/arm64\`"
+          } >> "$GITHUB_STEP_SUMMARY"

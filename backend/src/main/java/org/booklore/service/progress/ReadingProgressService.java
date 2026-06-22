@@ -39,6 +39,8 @@ public class ReadingProgressService {
 
     private static final float READING_THRESHOLD = 0.1f;
     private static final float COMPLETED_THRESHOLD = 99.5f;
+    private static final String WEB_READER_DEVICE = "WEB_READER";
+    private static final String WEB_READER_DEVICE_ID = "web-reader";
 
     private final UserBookProgressRepository userBookProgressRepository;
     private final UserBookFileProgressRepository userBookFileProgressRepository;
@@ -119,7 +121,7 @@ public class ReadingProgressService {
 
         if (progress.getKoreaderProgressPercent() != null) {
             book.setKoreaderProgress(KoProgress.builder()
-                    .percentage(roundToOneDecimal(progress.getKoreaderProgressPercent() * 100))
+                    .percentage(normalizeStoredKoreaderPercent(progress.getKoreaderProgressPercent()))
                     .build());
         }
 
@@ -196,6 +198,14 @@ public class ReadingProgressService {
         return value != null ? Math.round(value * 10f) / 10f : null;
     }
 
+    private Float normalizeStoredKoreaderPercent(Float value) {
+        if (value == null) {
+            return null;
+        }
+        float percentage = value > 1.0f ? value : value * 100.0f;
+        return roundToOneDecimal(Math.max(0.0f, Math.min(100.0f, percentage)));
+    }
+
     // ==================== Methods from BookUpdateService ====================
 
     @Transactional
@@ -231,13 +241,13 @@ public class ReadingProgressService {
 
                 BookFileEntity bookFile = bookFileRepository.findById(fileProgress.bookFileId())
                         .orElseThrow(() -> ApiError.GENERIC_NOT_FOUND.createException("Book file not found"));
-                updateProgressFromFileProgress(progress, bookFile.getBookType(), fileProgress);
+                updateProgressFromFileProgress(progress, bookFile.getBookType(), fileProgress, now);
             } else {
                 BookFileEntity primaryFile = book.getPrimaryBookFile();
                 if (primaryFile == null) {
                     throw ApiError.UNSUPPORTED_BOOK_TYPE.createException();
                 }
-                percentage = updateProgressByBookType(progress, primaryFile.getBookType(), request);
+                percentage = updateProgressByBookType(progress, primaryFile.getBookType(), request, now);
 
                 if (percentage != null) {
                     saveToUserBookFileProgressFromLegacy(userEntity, primaryFile, progress, now);
@@ -349,12 +359,17 @@ public class ReadingProgressService {
     }
 
     private void updateProgressFromFileProgress(UserBookProgressEntity progress, BookFileType bookType,
-                                                 BookFileProgress fileProgress) {
+                                                 BookFileProgress fileProgress, Instant now) {
         switch (bookType) {
             case PDF -> {
                 progress.setPdfProgress(fileProgress.positionData() != null ?
                         Integer.parseInt(fileProgress.positionData()) : null);
                 progress.setPdfProgressPercent(fileProgress.progressPercent());
+                mirrorPdfProgressToKoreader(
+                        progress,
+                        fileProgress.positionData(),
+                        fileProgress.progressPercent(),
+                        now);
             }
             case EPUB, FB2, MOBI, AZW3 -> {
                 progress.setEpubProgress(fileProgress.positionData());
@@ -373,10 +388,11 @@ public class ReadingProgressService {
         }
     }
 
-    private Float updateProgressByBookType(UserBookProgressEntity progress, BookFileType bookType, ReadProgressRequest request) {
+    private Float updateProgressByBookType(UserBookProgressEntity progress, BookFileType bookType,
+                                           ReadProgressRequest request, Instant now) {
         return switch (bookType) {
             case EPUB, FB2, MOBI, AZW3 -> updateEbookProgress(progress, request.getEpubProgress());
-            case PDF -> updatePdfProgress(progress, request.getPdfProgress());
+            case PDF -> updatePdfProgress(progress, request.getPdfProgress(), now);
             case CBX -> updateCbxProgress(progress, request.getCbxProgress());
             case AUDIOBOOK -> updateAudiobookProgress(request.getAudiobookProgress());
         };
@@ -392,12 +408,29 @@ public class ReadingProgressService {
         return Math.round(percentage * 10f) / 10f;
     }
 
-    private Float updatePdfProgress(UserBookProgressEntity progress, PdfProgress pdfProgress) {
+    private Float updatePdfProgress(UserBookProgressEntity progress, PdfProgress pdfProgress, Instant now) {
         if (pdfProgress == null) return null;
 
         progress.setPdfProgress(pdfProgress.getPage());
         float percentage = pdfProgress.getPercentage();
-        return Math.round(percentage * 10f) / 10f;
+        float roundedPercentage = Math.round(percentage * 10f) / 10f;
+        mirrorPdfProgressToKoreader(
+                progress,
+                pdfProgress.getPage() != null ? String.valueOf(pdfProgress.getPage()) : null,
+                roundedPercentage,
+                now);
+        return roundedPercentage;
+    }
+
+    private void mirrorPdfProgressToKoreader(UserBookProgressEntity progress, String location,
+                                              Float percentage, Instant now) {
+        progress.setKoreaderProgress(location);
+        progress.setKoreaderProgressPercent(
+                percentage != null ? percentage / 100.0f : null);
+        progress.setKoreaderDevice(WEB_READER_DEVICE);
+        progress.setKoreaderDeviceId(WEB_READER_DEVICE_ID);
+        progress.setKoreaderLastSyncTime(now);
+        progress.setLastReadTime(now);
     }
 
     private Float updateCbxProgress(UserBookProgressEntity progress, CbxProgress cbxProgress) {
