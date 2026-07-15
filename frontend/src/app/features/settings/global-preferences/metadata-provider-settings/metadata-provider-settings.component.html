@@ -51,11 +51,14 @@
 
             <div class="setting-item">
               <div class="setting-header">
-                <p-toggleswitch [(ngModel)]="googleEnabled"></p-toggleswitch>
+                <p-toggleswitch
+                  [(ngModel)]="googleEnabled"
+                  [disabled]="!googleApiKeyConfigured">
+                </p-toggleswitch>
                 <span class="setting-label">Google Books</span>
               </div>
-              @if (googleEnabled) {
-                <div class="setting-options">
+              <div class="setting-options">
+                @if (googleEnabled) {
                   <div class="config-field">
                     <span class="config-label">{{ t('languageRestriction') }}</span>
                     <p-select
@@ -66,18 +69,18 @@
                       class="config-select">
                     </p-select>
                   </div>
-                  <div class="config-field">
-                    <span class="config-label">{{ t('apiKeyOptional') }}</span>
-                    <p class="config-description">{{ t('googleApiDesc') }}</p>
-                    <input
-                      type="text"
-                      pInputText
-                      [placeholder]="t('googleApiPlaceholder')"
-                      [(ngModel)]="googleApiKey"
-                      class="config-input"/>
-                  </div>
+                }
+                <div class="config-field">
+                  <span class="config-label">{{ t('googleApiLabel') }}</span>
+                  <p class="config-description">{{ t('googleApiDesc') }}</p>
+                  <input
+                    type="text"
+                    pInputText
+                    [placeholder]="t('googleApiPlaceholder')"
+                    [(ngModel)]="googleApiKey"
+                    class="config-input"/>
                 </div>
-              }
+              </div>
             </div>
 
             <div class="setting-item">
@@ -145,26 +148,6 @@
                 </div>
               }
             </div>
-
-            <div class="setting-item">
-              <div class="setting-header">
-                <p-toggleswitch [(ngModel)]="goodreadsEnabled"></p-toggleswitch>
-                <span class="setting-label">Goodreads</span>
-              </div>
-              @if (goodreadsEnabled) {
-                <div class="warning-notice warning-notice-danger">
-                  <i class="pi pi-exclamation-triangle"></i>
-                  <div>
-                    <p>
-                      {{ t('goodreadsWarning') }}
-                      <a href="https://github.com/grimmory-tools/grimmory/issues/1713">
-                        {{ t('goodreadsWarningReadMore') }}
-                      </a>
-                    </p>
-                  </div>
-                </div>
-              }
-            </div>
           </div>
         </div>
 
@@ -172,6 +155,12 @@
           <h4 class="provider-group-title">{{ t('readyToUseTitle') }}</h4>
 
           <div class="simple-providers-grid">
+            <div class="setting-item simple-provider">
+              <div class="setting-header">
+                <p-toggleswitch [(ngModel)]="goodreadsEnabled"></p-toggleswitch>
+                <span class="setting-label">Goodreads</span>
+              </div>
+            </div>
 
             <div class="setting-item simple-provider">
               <div class="setting-header">
