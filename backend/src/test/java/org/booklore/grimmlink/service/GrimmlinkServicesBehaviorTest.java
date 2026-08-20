@@ -137,7 +137,7 @@ class GrimmlinkServicesBehaviorTest {
         bookFile.setBook(book);
         bookFile.setBookType(BookFileType.PDF);
         bookFile.setCurrentHash("hash-123");
-        book.setBookFiles(List.of(bookFile));
+        book.setBookFiles(Set.of(bookFile));
 
         KoreaderUserDetails principal = new KoreaderUserDetails(
                 "grimmlink-user", "secret", true, true, 7L, List.of()

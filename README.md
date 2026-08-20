@@ -173,6 +173,19 @@ docker compose up -d
 
 Open http://localhost:6060, create your admin account, and start building your library. (All libraries must be created within directories mounted on the host, e.g. the `/books/` directory in the sample `docker-compose.yml` above.)
 
+#### Optional: Capture Heap Dumps for OOM Debugging
+
+Heap dumps are disabled by default. To enable them temporarily, add the following environment variable to the `grimmory` service:
+
+```yaml
+services:
+  grimmory:
+    environment:
+      - JDK_JAVA_OPTIONS=-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/app/data
+```
+
+The JVM creates a PID-specific `.hprof` file in the mounted `/app/data` directory. Remove the option after collecting the diagnostic data because heap dumps can be large and contain sensitive application data.
+
 Additional deployment examples:
 
 - Docker Compose: [`deploy/compose/docker-compose.yml`](deploy/compose/docker-compose.yml)
@@ -258,12 +271,12 @@ All other features — reading, metadata, sync — remain fully functional.
 
 ## Community and Support
 
-| Channel | |
-| :--- | :--- |
-| Report a bug | [Open an issue](https://github.com/grimmory-tools/grimmory/issues/new?template=bug_report.yml) |
-| Request a feature | [Open an issue](https://github.com/grimmory-tools/grimmory/issues/new?template=feature_request.yml) |
-| Contribute | [Contributing Guide](CONTRIBUTING.md) |
-| Join the discussion | [Discord Server](https://discord.gg/9YJ7HB4n8T) |
+| Channel |                                                                                                         |
+| :--- |:--------------------------------------------------------------------------------------------------------|
+| Report a bug | [Open an issue](https://github.com/grimmory-tools/grimmory/issues/new?template=bug-report.yml)          |
+| Request a feature | [Open a Discussion](https://github.com/orgs/grimmory-tools/discussions/new?category=feature-requests-ideas) |
+| Contribute | [Contributing Guide](CONTRIBUTING.md)                                                                   |
+| Join the discussion | [Discord Server](https://discord.gg/9YJ7HB4n8T)                                                         |
 
 > [!WARNING]
 > Before opening a pull request, open an issue first and get maintainer approval. Pull requests without a linked issue, without screenshots or video proof, or without pasted test output will be closed. All code must follow the project [backend](CONTRIBUTING.md#backend-conventions) and [frontend](CONTRIBUTING.md#frontend-conventions) conventions. AI-assisted contributions are welcome, but you must run, test, and understand every line you submit. See the [Contributing Guide](CONTRIBUTING.md) for full details.

@@ -189,14 +189,23 @@ public class AppSettingService {
         Map<String, String> settingsMap = getSettingsMap();
         PublicAppSetting.PublicAppSettingBuilder builder = PublicAppSetting.builder();
 
-        builder.oidcEnabled(Boolean.parseBoolean(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.OIDC_ENABLED, "false")));
         builder.remoteAuthEnabled(appProperties.getRemoteAuth().isEnabled());
         OidcProviderDetails details = settingPersistenceHelper.getJsonSetting(settingsMap, AppSettingKey.OIDC_PROVIDER_DETAILS, OidcProviderDetails.class, null, false);
         if (details != null) {
             details.setClientSecret(null);
         }
+
+        boolean oidcEnabled = Boolean.parseBoolean(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.OIDC_ENABLED, "false"));
+        boolean oidcForceOnlyMode = Boolean.parseBoolean(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.OIDC_FORCE_ONLY_MODE, "false"));
+
+        if (appProperties.getForceDisableOidc() != null && appProperties.getForceDisableOidc()) {
+            oidcEnabled = false;
+            oidcForceOnlyMode = false;
+        }
+        builder.oidcEnabled(oidcEnabled);
+        builder.oidcForceOnlyMode(oidcForceOnlyMode);
+
         builder.oidcProviderDetails(details);
-        builder.oidcForceOnlyMode(Boolean.parseBoolean(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.OIDC_FORCE_ONLY_MODE, "false")));
 
         return builder.build();
     }
@@ -230,7 +239,7 @@ public class AppSettingService {
             )
         );
         builder.autoBookSearch(Boolean.parseBoolean(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.AUTO_BOOK_SEARCH, "false")));
-        builder.uploadPattern(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.UPLOAD_FILE_PATTERN, "{authors}/<{series}/><{seriesIndex}. >/{title}/{title}< - {authors}>< ({year})>"));
+        builder.uploadPattern(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.UPLOAD_FILE_PATTERN, "{authors}/<{series}/><{seriesIndex} - >{title}/{title}< - {authors}>< ({year})>"));
         builder.similarBookRecommendation(Boolean.parseBoolean(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.SIMILAR_BOOK_RECOMMENDATION, "true")));
         builder.opdsServerEnabled(Boolean.parseBoolean(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.OPDS_SERVER_ENABLED, "false")));
         builder.komgaApiEnabled(Boolean.parseBoolean(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.KOMGA_API_ENABLED, "false")));
@@ -247,15 +256,20 @@ public class AppSettingService {
             }
         }
 
-        boolean settingEnabled = Boolean.parseBoolean(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.OIDC_ENABLED, "false"));
-        Boolean forceDisable = appProperties.getForceDisableOidc();
-        boolean finalEnabled = settingEnabled && (forceDisable == null || !forceDisable);
-        builder.oidcEnabled(finalEnabled);
+        boolean oidcEnabled = Boolean.parseBoolean(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.OIDC_ENABLED, "false"));
+        boolean oidcForceOnlyMode = Boolean.parseBoolean(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.OIDC_FORCE_ONLY_MODE, "false"));
+
+        // Env var flag to force disable OIDC
+        if (appProperties.getForceDisableOidc() != null && appProperties.getForceDisableOidc()) {
+            oidcEnabled = false;
+            oidcForceOnlyMode = false;
+        }
+
+        builder.oidcEnabled(oidcEnabled);
+        builder.oidcForceOnlyMode(oidcForceOnlyMode);
 
         builder.oidcGroupSyncMode(settingPersistenceHelper.getOrCreateSetting(
                 AppSettingKey.OIDC_GROUP_SYNC_MODE, "DISABLED"));
-
-        builder.oidcForceOnlyMode(Boolean.parseBoolean(settingPersistenceHelper.getOrCreateSetting(AppSettingKey.OIDC_FORCE_ONLY_MODE, "false")));
 
         builder.diskType(appProperties.getDiskType());
 
