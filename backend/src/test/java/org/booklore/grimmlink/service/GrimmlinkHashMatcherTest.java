@@ -52,7 +52,7 @@ class GrimmlinkHashMatcherTest {
         file1.setInitialHash("initial-hash-1");
         file1.setBookType(BookFileType.EPUB);
         file1.setBook(book1);
-        book1.setBookFiles(java.util.List.of(file1));
+        book1.setBookFiles(java.util.Set.of(file1));
 
         book2 = new BookEntity();
         book2.setId(200L);
@@ -64,7 +64,7 @@ class GrimmlinkHashMatcherTest {
         file2.setInitialHash("initial-hash-2");
         file2.setBookType(BookFileType.PDF);
         file2.setBook(book2);
-        book2.setBookFiles(java.util.List.of(file2));
+        book2.setBookFiles(java.util.Set.of(file2));
     }
 
     @Test
@@ -110,7 +110,7 @@ class GrimmlinkHashMatcherTest {
         file.setCurrentHash("restricted-hash");
         file.setBookType(BookFileType.EPUB);
         file.setBook(restrictedBook);
-        restrictedBook.setBookFiles(java.util.List.of(file));
+        restrictedBook.setBookFiles(java.util.Set.of(file));
 
         when(grimmLinkBookMatchService.resolveAccessibleBookByHash(reader, "restricted-hash"))
                 .thenThrow(APIException.class);
@@ -133,7 +133,7 @@ class GrimmlinkHashMatcherTest {
         file.setCurrentHash("admin-hash");
         file.setBookType(BookFileType.EPUB);
         file.setBook(anyBook);
-        anyBook.setBookFiles(java.util.List.of(file));
+        anyBook.setBookFiles(java.util.Set.of(file));
 
         // Admin permission
         UserPermissionsEntity adminPerm = new UserPermissionsEntity();

@@ -95,7 +95,7 @@ class GrimmlinkReadingSessionServiceTest {
         primaryFile.setBook(book);
         primaryFile.setBookType(BookFileType.EPUB);
         primaryFile.setCurrentHash("hash-123");
-        book.setBookFiles(List.of(primaryFile));
+        book.setBookFiles(Set.of(primaryFile));
 
         KoreaderUserDetails principal = new KoreaderUserDetails(
                 "grimmlink-user",

@@ -1,11 +1,13 @@
 import { booleanAttribute, ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { cn } from '../cn';
+import { AppControlTransitionDirective } from '../control.styles';
 import { SPINNER_RING } from '../spinner/app-spinner.variants';
 import { buttonVariants, type ButtonSize, type ButtonTone, type ButtonVariant } from './app-button.variants';
 
 @Component({
   selector: 'app-button',
   standalone: true,
+  imports: [AppControlTransitionDirective],
   host: {
     class: 'inline-block align-middle',
     '[class.w-full]': 'fluid()',
@@ -13,6 +15,7 @@ import { buttonVariants, type ButtonSize, type ButtonTone, type ButtonVariant } 
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <button
+      appControlTransition
       [attr.id]="buttonId() || null"
       [class]="buttonClass()"
       [disabled]="disabled() || loading()"
@@ -31,15 +34,15 @@ import { buttonVariants, type ButtonSize, type ButtonTone, type ButtonVariant } 
       (click)="clicked.emit($event)">
       @if (loading()) {
         <span [class]="loadingRingClass" aria-hidden="true"></span>
-      } @else if (icon() && iconPos() === 'left') {
-        <i [class]="iconClass()" aria-hidden="true"></i>
       }
+      <span
+        class="inline-flex shrink-0 empty:hidden [&>svg]:size-[1em] [&>svg]:shrink-0"
+        [class.hidden]="loading()"
+        [class.order-last]="iconPos() === 'right'">
+        <ng-content />
+      </span>
       @if (label()) {
         <span class="leading-none">{{ label() }}</span>
-      }
-      <ng-content />
-      @if (!loading() && icon() && iconPos() === 'right') {
-        <i [class]="iconClass()" aria-hidden="true"></i>
       }
     </button>
   `,
@@ -64,7 +67,6 @@ export class AppButtonComponent {
   readonly ariaExpanded = input<boolean | string | null>(null);
   readonly ariaHasPopup = input<boolean | 'false' | 'true' | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog' | null>(null);
   readonly ariaPressed = input<boolean | 'false' | 'true' | 'mixed' | null>(null);
-  readonly icon = input('');
   readonly iconPos = input<'left' | 'right'>('left');
   readonly loading = input(false, { transform: booleanAttribute });
   readonly disabled = input(false, { transform: booleanAttribute });
@@ -85,6 +87,5 @@ export class AppButtonComponent {
       this.styleClass(),
     ),
   );
-  protected readonly iconClass = computed(() => cn(this.icon(), 'shrink-0 m-0 leading-none'));
   protected readonly loadingRingClass = cn(SPINNER_RING, 'size-[1em] border-2 shrink-0');
 }

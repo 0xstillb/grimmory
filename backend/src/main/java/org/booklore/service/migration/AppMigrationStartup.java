@@ -20,6 +20,8 @@ public class AppMigrationStartup {
     private final PopulateSearchTextMigration populateSearchTextMigration;
     private final GenerateCoverHashMigration generateCoverHashMigration;
     private final MigrateProgressToFileProgressMigration migrateProgressToFileProgressMigration;
+    private final PopulateAuthorSortNameMigration populateAuthorSortNameMigration;
+    private final RemoveBundledCustomSvgIconsMigration removeBundledCustomSvgIconsMigration;
 
     @EventListener(ApplicationReadyEvent.class)
     public void runMigrationsOnce() {
@@ -32,5 +34,7 @@ public class AppMigrationStartup {
         appMigrationService.executeMigration(populateSearchTextMigration);
         appMigrationService.executeMigration(generateCoverHashMigration);
         appMigrationService.executeMigration(migrateProgressToFileProgressMigration);
+        appMigrationService.executeMigration(populateAuthorSortNameMigration);
+        appMigrationService.executeMigration(removeBundledCustomSvgIconsMigration);
     }
 }

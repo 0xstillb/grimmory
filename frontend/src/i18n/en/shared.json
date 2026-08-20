@@ -160,7 +160,7 @@
   "ui": {
     "autocomplete": {
       "noResults": "No results",
-      "removeTag": "Remove {{ tag }}"
+      "loadFailed": "Couldn't load results"
     },
     "datePicker": {
       "previousMonth": "Previous month",
@@ -186,6 +186,10 @@
       "noResults": "No results",
       "search": "Search",
       "selectedCount": "{{ count }} selected"
+    },
+    "shelfMenu": {
+      "addToShelf": "Add to shelf",
+      "newShelf": "New shelf…"
     },
     "spinner": {
       "loading": "Loading"

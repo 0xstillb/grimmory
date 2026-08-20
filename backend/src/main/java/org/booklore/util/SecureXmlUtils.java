@@ -14,6 +14,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.StringReader;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -44,28 +45,37 @@ public class SecureXmlUtils {
     private static final Pattern RDF_ROOT_PATTERN = Pattern.compile("<rdf:RDF\\b([^>]*)>");
     private static final Pattern DECLARED_NS_PATTERN = Pattern.compile("\\bxmlns:([a-zA-Z][a-zA-Z0-9]*)\\s*=");
     private static final Pattern PREFIX_USAGE_PATTERN = Pattern.compile("(?:<|</|\\s)([a-zA-Z][a-zA-Z0-9]*):");
+    private static final List<String> DISABLED_FEATURE_FLAGS = List.of(
+            "http://xml.org/sax/features/external-general-entities",
+            "http://xml.org/sax/features/external-parameter-entities",
+            "http://apache.org/xml/features/nonvalidating/load-external-dtd"
+    );
 
     static {
-        try {
-            NS_AWARE_FACTORY = buildFactory(true);
-            NON_NS_AWARE_FACTORY = buildFactory(false);
-        } catch (ParserConfigurationException e) {
-            throw new ExceptionInInitializerError(e);
-        }
+        NS_AWARE_FACTORY = buildFactory(true);
+        NON_NS_AWARE_FACTORY = buildFactory(false);
     }
 
-    private static DocumentBuilderFactory buildFactory(boolean namespaceAware) throws ParserConfigurationException {
+    private static DocumentBuilderFactory buildFactory(boolean namespaceAware) {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(namespaceAware);
 
-        // Prevent XXE attacks
-        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+        for (var featureFlag : DISABLED_FEATURE_FLAGS) {
+            try {
+                factory.setFeature(featureFlag, false);
+            } catch (ParserConfigurationException e) {
+                log.error("Feature {} is not supported by your XML processor.", featureFlag, e);
+            }
+        }
+
+        try {
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        } catch (ParserConfigurationException e) {
+            log.error("Feature FEATURE_SECURE_PROCESSING is not supported by your XML processor.", e);
+        }
+
         factory.setXIncludeAware(false);
         factory.setExpandEntityReferences(false);
-
         return factory;
     }
 
