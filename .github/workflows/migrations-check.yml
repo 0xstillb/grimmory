@@ -48,6 +48,11 @@ jobs:
 
           echo "base_ref=$BASE_REF" >> "$GITHUB_OUTPUT"
           echo "head_ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
+      - name: Enforce Published Migration Immutability
+        env:
+          BASE_REF: ${{ steps.normalize_refs.outputs.base_ref }}
+          HEAD_REF: ${{ steps.normalize_refs.outputs.head_ref }}
+        run: bash tools/ci/verify-published-flyway-migrations.sh "$BASE_REF" "$HEAD_REF"
 
       - name: Detect Flyway Migration Changes
         id: check_migrations
