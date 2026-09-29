@@ -349,7 +349,7 @@ class KoreaderServiceTest {
         BookLoreUserEntity user = user(42L);
         UserBookProgressEntity progress = new UserBookProgressEntity();
         progress.setEpubProgress("epubcfi(/6/8!/4/2/6)");
-        when(koreaderUserRepo.findByBookLoreUserId(42L)).thenReturn(Optional.of(koreaderUser(true, true)));
+        when(koreaderUserRepo.findByBookLoreUserId(42L)).thenReturn(Optional.of(koreaderUser(true)));
         when(bookRepo.findById(11L)).thenReturn(Optional.of(book));
         when(userRepo.findById(42L)).thenReturn(Optional.of(user));
         when(progressRepo.findByUserIdAndBookId(42L, 11L)).thenReturn(Optional.of(progress));
@@ -372,7 +372,7 @@ class KoreaderServiceTest {
         UserBookProgressEntity progress = new UserBookProgressEntity();
         progress.setEpubProgress("epubcfi(/6/8!/4/2/6)");
         progress.setKoreaderProgress("/old/xpointer");
-        when(koreaderUserRepo.findByBookLoreUserId(42L)).thenReturn(Optional.of(koreaderUser(true, true)));
+        when(koreaderUserRepo.findByBookLoreUserId(42L)).thenReturn(Optional.of(koreaderUser(true)));
         when(bookRepo.findById(11L)).thenReturn(Optional.of(book));
         when(userRepo.findById(42L)).thenReturn(Optional.of(user));
         when(progressRepo.findByUserIdAndBookId(42L, 11L)).thenReturn(Optional.of(progress));
@@ -390,17 +390,7 @@ class KoreaderServiceTest {
 
     @Test
     void syncProgressToKoreader_whenGlobalSyncDisabled_skipsUpdate() {
-        when(koreaderUserRepo.findByBookLoreUserId(42L)).thenReturn(Optional.of(koreaderUser(false, true)));
-
-        service.syncProgressToKoreader(11L, 75f, 42L);
-
-        verifyNoInteractions(bookRepo, userRepo, epubCfiService);
-        verify(progressRepo, never()).save(any());
-    }
-
-    @Test
-    void syncProgressToKoreader_whenWebReaderSyncDisabled_skipsUpdate() {
-        when(koreaderUserRepo.findByBookLoreUserId(42L)).thenReturn(Optional.of(koreaderUser(true, false)));
+        when(koreaderUserRepo.findByBookLoreUserId(42L)).thenReturn(Optional.of(koreaderUser(false)));
 
         service.syncProgressToKoreader(11L, 75f, 42L);
 
@@ -410,7 +400,7 @@ class KoreaderServiceTest {
 
     @Test
     void syncProgressToKoreader_whenBookOrUserMissing_logsAndSkipsSave() {
-        when(koreaderUserRepo.findByBookLoreUserId(42L)).thenReturn(Optional.of(koreaderUser(true, true)));
+        when(koreaderUserRepo.findByBookLoreUserId(42L)).thenReturn(Optional.of(koreaderUser(true)));
         when(bookRepo.findById(11L)).thenReturn(Optional.empty());
         when(userRepo.findById(42L)).thenReturn(Optional.of(user(42L)));
 
@@ -426,7 +416,7 @@ class KoreaderServiceTest {
         UserBookProgressEntity progress = new UserBookProgressEntity();
         progress.setEpubProgress("epubcfi(/6/8!/4/2/6)");
         progress.setKoreaderProgress("/old/xpointer");
-        when(koreaderUserRepo.findByBookLoreUserId(42L)).thenReturn(Optional.of(koreaderUser(true, true)));
+        when(koreaderUserRepo.findByBookLoreUserId(42L)).thenReturn(Optional.of(koreaderUser(true)));
         when(bookRepo.findById(11L)).thenReturn(Optional.of(book));
         when(userRepo.findById(42L)).thenReturn(Optional.of(user));
         when(progressRepo.findByUserIdAndBookId(42L, 11L)).thenReturn(Optional.of(progress));
@@ -441,6 +431,25 @@ class KoreaderServiceTest {
     }
 
     @Test
+    void syncProgressToKoreader_usesGrimmoryDeviceInfo() {
+        BookEntity book = bookWithPrimaryFile(11L, BookFileType.PDF);
+        BookLoreUserEntity user = user(42L);
+        UserBookProgressEntity progress = new UserBookProgressEntity();
+        progress.setKoreaderDeviceId("EXAMPLE-ID");
+        progress.setKoreaderDevice("EXAMPLE-DEVICE");
+        when(koreaderUserRepo.findByBookLoreUserId(42L)).thenReturn(Optional.of(koreaderUser(true)));
+        when(bookRepo.findById(11L)).thenReturn(Optional.of(book));
+        when(userRepo.findById(42L)).thenReturn(Optional.of(user));
+        when(progressRepo.findByUserIdAndBookId(42L, 11L)).thenReturn(Optional.of(progress));
+
+        service.syncProgressToKoreader(11L, 50f, 42L);
+
+        assertEquals("Grimmory", progress.getKoreaderDevice());
+        assertEquals("Grimmory", progress.getKoreaderDeviceId());
+        verify(progressRepo).save(progress);
+    }
+
+    @Test
     void normalizeProgressPercent_handlesNullAndRanges() throws Exception {
         Method method = KoreaderService.class.getDeclaredMethod("normalizeProgressPercent", Float.class);
         method.setAccessible(true);
@@ -451,10 +460,9 @@ class KoreaderServiceTest {
         assertEquals(42.0f, (Float) method.invoke(service, 42.0f));
     }
 
-    private KoreaderUserEntity koreaderUser(boolean syncEnabled, boolean syncWithWebReader) {
+    private KoreaderUserEntity koreaderUser(boolean syncEnabled) {
         return KoreaderUserEntity.builder()
                 .syncEnabled(syncEnabled)
-                .syncWithWebReader(syncWithWebReader)
                 .build();
     }
 
