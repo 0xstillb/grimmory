@@ -211,6 +211,7 @@ public class PdfMetadataExtractor implements FileMetadataExtractor {
         findCustomField(xmp, rawXmp, "isbn10").ifPresent(val -> metadataBuilder.isbn10(cleanIsbn(val)));
         findCustomField(xmp, rawXmp, "googleId").ifPresent(metadataBuilder::googleId);
         findCustomField(xmp, rawXmp, "goodreadsId").ifPresent(metadataBuilder::goodreadsId);
+        findCustomField(xmp, rawXmp, "openlibraryId").ifPresent(metadataBuilder::openlibraryId);
         findCustomField(xmp, rawXmp, "amazonId").ifPresent(metadataBuilder::asin);
         findCustomField(xmp, rawXmp, "asin").ifPresent(metadataBuilder::asin);
         findCustomField(xmp, rawXmp, "comicvineId").ifPresent(metadataBuilder::comicvineId);
@@ -218,6 +219,7 @@ public class PdfMetadataExtractor implements FileMetadataExtractor {
         findCustomField(xmp, rawXmp, "lubimyczytacId").ifPresent(metadataBuilder::lubimyczytacId);
         findCustomField(xmp, rawXmp, "hardcoverId").ifPresent(metadataBuilder::hardcoverId);
         findCustomField(xmp, rawXmp, "hardcoverBookId").ifPresent(metadataBuilder::hardcoverBookId);
+        findCustomField(xmp, rawXmp, "applebooksId").ifPresent(metadataBuilder::applebooksId);
 
         // XMP Qualified Identifiers
         for (QualifiedIdentifier qi : xmp.xmpIdentifiers()) {
@@ -234,12 +236,14 @@ public class PdfMetadataExtractor implements FileMetadataExtractor {
                 case "isbn10" -> metadataBuilder.isbn10(cleanIsbn(value));
                 case "google" -> metadataBuilder.googleId(value);
                 case "amazon", "asin", "amazonid" -> metadataBuilder.asin(value);
+                case "openlibrary" -> metadataBuilder.openlibraryId(value);
                 case "goodreads" -> metadataBuilder.goodreadsId(value);
                 case "comicvine" -> metadataBuilder.comicvineId(value);
                 case "ranobedb" -> metadataBuilder.ranobedbId(value);
                 case "lubimyczytac" -> metadataBuilder.lubimyczytacId(value);
                 case "hardcover" -> metadataBuilder.hardcoverId(value);
                 case "hardcover_book_id" -> metadataBuilder.hardcoverBookId(value);
+                case "applebooks" -> metadataBuilder.applebooksId(value);
             }
         }
 
@@ -250,6 +254,7 @@ public class PdfMetadataExtractor implements FileMetadataExtractor {
         mapRating(xmp, rawXmp, "hardcoverRating", "HardcoverRating", metadataBuilder::hardcoverRating);
         mapRating(xmp, rawXmp, "lubimyczytacRating", "LubimyczytacRating", metadataBuilder::lubimyczytacRating);
         mapRating(xmp, rawXmp, "ranobedbRating", "RanobedbRating", metadataBuilder::ranobedbRating);
+        mapRating(xmp, rawXmp, "applebooksRating", "ApplebooksRating", metadataBuilder::applebooksRating);
 
     } catch (Exception e) {
         log.error("Failed to load PDF file: {}", file.getPath(), e);
