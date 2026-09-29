@@ -88,21 +88,4 @@ describe('KoreaderService', () => {
     expect(request.request.body).toBeNull();
     request.flush(null);
   });
-
-  it('patches the web-reader sync-progress toggle using the enabled query parameter', () => {
-    let completed = false;
-
-    service.toggleSyncProgressWithWebReader(false).subscribe(() => {
-      completed = true;
-    });
-
-    const request = httpTestingController.expectOne(req =>
-      req.method === 'PATCH' && req.url.endsWith('/api/v1/koreader-users/me/sync-progress-with-grimmory')
-    );
-    expect(request.request.params.get('enabled')).toBe('false');
-    expect(request.request.body).toBeNull();
-    request.flush(null);
-
-    expect(completed).toBe(true);
-  });
 });

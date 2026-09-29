@@ -33,7 +33,10 @@ public class GrimmlinkAuthService {
         response.put("userId", reader.getId());
         if (reader.getKoreaderUser() != null) {
             response.put("syncEnabled", reader.getKoreaderUser().isSyncEnabled());
-            response.put("syncWithWebReader", reader.getKoreaderUser().isSyncWithWebReader());
+            // Preserve the GrimmLink response field as an alias for the effective
+            // setting: upstream now syncs with the web reader whenever KOReader
+            // sync is enabled, with no separate toggle.
+            response.put("syncWithWebReader", reader.getKoreaderUser().isSyncEnabled());
         }
         return response;
     }

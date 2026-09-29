@@ -33,10 +33,4 @@ export class KoreaderService {
       params: {enabled: enabled.toString()}
     });
   }
-
-  toggleSyncProgressWithWebReader(enabled: boolean): Observable<void> {
-    return this.http.patch<void>(`${this.url}/me/sync-progress-with-grimmory`, null, {
-      params: {enabled: enabled.toString()}
-    });
-  }
 }

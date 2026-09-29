@@ -81,7 +81,6 @@ public class GrimmlinkAuthFilter extends OncePerRequestFilter {
                 koreaderUser.getUsername(),
                 koreaderUser.getPasswordMD5(),
                 koreaderUser.isSyncEnabled(),
-                koreaderUser.isSyncWithWebReader(),
                 bookLoreUserId,
                 List.of(new SimpleGrantedAuthority("ROLE_USER"))
         );

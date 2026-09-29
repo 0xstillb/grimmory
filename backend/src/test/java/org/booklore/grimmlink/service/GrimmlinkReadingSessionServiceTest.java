@@ -101,7 +101,6 @@ class GrimmlinkReadingSessionServiceTest {
                 "grimmlink-user",
                 "secret",
                 true,
-                true,
                 7L,
                 List.of()
         );
