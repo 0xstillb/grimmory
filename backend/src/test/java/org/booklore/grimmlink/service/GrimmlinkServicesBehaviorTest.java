@@ -140,7 +140,7 @@ class GrimmlinkServicesBehaviorTest {
         book.setBookFiles(Set.of(bookFile));
 
         KoreaderUserDetails principal = new KoreaderUserDetails(
-                "grimmlink-user", "secret", true, true, 7L, List.of()
+                "grimmlink-user", "secret", true, 7L, List.of()
         );
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities())
