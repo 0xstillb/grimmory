@@ -83,7 +83,10 @@ public class GrimmlinkShelfService {
             Long shelfId,
             Integer limit,
             Integer offset,
-            String cursor) {
+            String cursor,
+            String format,
+            Integer page,
+            Integer pageSize) {
         BookLoreUserEntity reader = authService.requireCurrentReader(true);
         List<GrimmlinkBookSummary> books;
         if ("magic".equals(normalizeShelfType(shelfType))) {
@@ -117,7 +120,23 @@ public class GrimmlinkShelfService {
                     .map(this::toBookSummary)
                     .toList();
         }
-        return applyShelfPagination(books, limit, offset, cursor);
+        String normalizedFormat = bookService.trimToNull(format);
+        if (normalizedFormat != null) {
+            String wanted = normalizedFormat.replaceFirst("^\\.", "").toUpperCase(Locale.ROOT);
+            books = books.stream()
+                    .filter(book -> {
+                        String fileFormat = book.getFileFormat();
+                        String extension = book.getExtension();
+                        return (fileFormat != null && wanted.equals(fileFormat.toUpperCase(Locale.ROOT)))
+                                || (extension != null && wanted.equals(extension.toUpperCase(Locale.ROOT)));
+                    })
+                    .toList();
+        }
+        Integer effectiveOffset = offset;
+        if (effectiveOffset == null && page != null && page > 0 && pageSize != null && pageSize > 0) {
+            effectiveOffset = (page - 1) * Math.min(pageSize, 100);
+        }
+        return applyShelfPagination(books, limit, effectiveOffset, cursor);
     }
 
     @Transactional
