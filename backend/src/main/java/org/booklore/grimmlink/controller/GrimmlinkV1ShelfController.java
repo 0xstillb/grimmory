@@ -32,9 +32,12 @@ public class GrimmlinkV1ShelfController {
     public ResponseEntity<List<GrimmlinkBookSummary>> listShelfBooks(@PathVariable Long shelfId,
                                                                      @RequestParam(required = false) Integer limit,
                                                                      @RequestParam(required = false) Integer offset,
-                                                                     @RequestParam(required = false) String cursor) {
+                                                                     @RequestParam(required = false) String cursor,
+                                                                     @RequestParam(required = false) String format,
+                                                                     @RequestParam(required = false) Integer page,
+                                                                     @RequestParam(required = false) Integer pageSize) {
         return ResponseEntity.ok(
-                shelfService.listShelfBooks("regular", shelfId, limit, offset, cursor));
+                shelfService.listShelfBooks("regular", shelfId, limit, offset, cursor, format, page, pageSize));
     }
 
     @GetMapping("/{shelfType}/{shelfId}/books")
@@ -42,11 +45,14 @@ public class GrimmlinkV1ShelfController {
                                                                           @PathVariable Long shelfId,
                                                                           @RequestParam(required = false) Integer limit,
                                                                           @RequestParam(required = false) Integer offset,
-                                                                          @RequestParam(required = false) String cursor) {
+                                                                          @RequestParam(required = false) String cursor,
+                                                                          @RequestParam(required = false) String format,
+                                                                          @RequestParam(required = false) Integer page,
+                                                                          @RequestParam(required = false) Integer pageSize) {
         String debugId = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         try {
             return ResponseEntity.ok(
-                    shelfService.listShelfBooks(shelfType, shelfId, limit, offset, cursor));
+                    shelfService.listShelfBooks(shelfType, shelfId, limit, offset, cursor, format, page, pageSize));
         } catch (APIException ex) {
             log.error("GrimmLink shelf fetch failed debugId={} shelfType={} shelfId={} status={} message={}",
                     debugId, shelfType, shelfId, ex.getStatus(), ex.getMessage(), ex);
