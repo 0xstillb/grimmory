@@ -9,6 +9,7 @@ import org.booklore.grimmlink.dto.GrimmlinkShelfRemovalResponse;
 import org.booklore.grimmlink.dto.GrimmlinkShelfSummary;
 import org.booklore.grimmlink.service.GrimmlinkShelfService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +23,50 @@ import java.util.UUID;
 public class GrimmlinkV1ShelfController {
 
     private final GrimmlinkShelfService shelfService;
+
+    @GetMapping(value = "/crosspoint.xml", produces = MediaType.APPLICATION_XML_VALUE)
+    public ResponseEntity<String> crosspointRootCatalog() {
+        return ResponseEntity.ok("<?xml version=\"1.0\" encoding=\"UTF-8\"?><catalog>"
+                + "<entry><title>Regular Shelves</title><url>/api/grimmlink/v1/shelves/crosspoint/regular.xml</url><collection/></entry>"
+                + "<entry><title>Magic Shelves</title><url>/api/grimmlink/v1/shelves/crosspoint/magic.xml</url><collection/></entry>"
+                + "</catalog>");
+    }
+
+    @GetMapping(value = "/crosspoint/{shelfType}.xml", produces = MediaType.APPLICATION_XML_VALUE)
+    public ResponseEntity<String> crosspointShelfCatalog(@PathVariable String shelfType) {
+        StringBuilder xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?><catalog>");
+        for (GrimmlinkShelfSummary shelf : shelfService.listShelves(shelfType)) {
+            xml.append("<entry><title>").append(xmlEscape(shelf.getName())).append("</title>")
+                    .append("<id>").append(shelf.getId()).append("</id>")
+                    .append("<url>/api/grimmlink/v1/shelves/crosspoint/")
+                    .append(xmlEscape(shelfType)).append("/").append(shelf.getId()).append(".xml</url>")
+                    .append("<collection/></entry>");
+        }
+        return ResponseEntity.ok(xml.append("</catalog>").toString());
+    }
+
+    @GetMapping(value = "/crosspoint/{shelfType}/{shelfId}.xml", produces = MediaType.APPLICATION_XML_VALUE)
+    public ResponseEntity<String> crosspointBookCatalog(@PathVariable String shelfType, @PathVariable Long shelfId) {
+        StringBuilder xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?><catalog>");
+        for (GrimmlinkBookSummary book : shelfService.listShelfBooks(shelfType, shelfId, 100, 0, null, "EPUB", null, null)) {
+            xml.append("<entry><title>").append(xmlEscape(book.getTitle())).append("</title>")
+                    .append("<author>").append(xmlEscape(book.getAuthor())).append("</author>")
+                    .append("<id>").append(book.getBookId()).append("</id>")
+                    .append("<url>/api/grimmlink/v1/books/").append(book.getBookId()).append("/download</url>")
+                    .append("</entry>");
+        }
+        return ResponseEntity.ok(xml.append("</catalog>").toString());
+    }
+
+    private String xmlEscape(Object value) {
+        if (value == null) return "";
+        return String.valueOf(value)
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;");
+    }
 
     @GetMapping
     public ResponseEntity<List<GrimmlinkShelfSummary>> listShelves(@RequestParam(required = false) String type) {
